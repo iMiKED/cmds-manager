@@ -1,0 +1,27 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CmdsManager", "src\CmdsManager\CmdsManager.csproj", "{E6200299-A97B-4E55-9DF2-17C49F1234A1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CmdsManager.Tests", "tests\CmdsManager.Tests\CmdsManager.Tests.csproj", "{309E8F7F-BA3E-40A7-8901-5AC113867A46}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E6200299-A97B-4E55-9DF2-17C49F1234A1}.Debug|x64.ActiveCfg = Debug|x64
+		{E6200299-A97B-4E55-9DF2-17C49F1234A1}.Debug|x64.Build.0 = Debug|x64
+		{E6200299-A97B-4E55-9DF2-17C49F1234A1}.Release|x64.ActiveCfg = Release|x64
+		{E6200299-A97B-4E55-9DF2-17C49F1234A1}.Release|x64.Build.0 = Release|x64
+		{309E8F7F-BA3E-40A7-8901-5AC113867A46}.Debug|x64.ActiveCfg = Debug|x64
+		{309E8F7F-BA3E-40A7-8901-5AC113867A46}.Debug|x64.Build.0 = Debug|x64
+		{309E8F7F-BA3E-40A7-8901-5AC113867A46}.Release|x64.ActiveCfg = Release|x64
+		{309E8F7F-BA3E-40A7-8901-5AC113867A46}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

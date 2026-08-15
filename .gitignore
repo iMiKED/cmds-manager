@@ -1,0 +1,13 @@
+/docs/
+/.vs/
+/artifacts/
+/packages/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.pdb
+*.zip
+CmdsManager.ini
+CmdsManager.ini.bak
+logs/
