@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -33,6 +34,7 @@ namespace CmdsManager.Tests
             Run("Parallel launch sessions", TestParallelLaunchSessions);
             Run("Compact localized dialogs", TestCompactLocalizedDialogs);
             Run("Batched console output", TestBatchedConsoleOutput);
+            Run("Running script visual indicator", TestRunningVisualIndicator);
             Run("Single-instance command IPC", TestSingleInstanceCommandIpc);
             Run("Job Object stops child processes", TestProcessTreeStop);
 
@@ -103,6 +105,7 @@ namespace CmdsManager.Tests
                 Equal("en", reloaded.Localization.Language, "selected language");
                 Assert(reloaded.Localization.Languages.ContainsKey("ru") && reloaded.Localization.Languages.ContainsKey("en"), "Russian and English string tables");
                 Equal("Start", reloaded.Localization.Languages["en"]["Main.Start"], "English string");
+                Equal("Execution state indicator", reloaded.Localization.Languages["en"]["Main.Column.ActivityHint"], "activity indicator string");
                 Equal(0, reloaded.Localization.Languages["ru"].Keys.Except(reloaded.Localization.Languages["en"].Keys, StringComparer.OrdinalIgnoreCase).Count(), "every Russian key has an English value");
                 Equal(0, reloaded.Localization.Languages["en"].Keys.Except(reloaded.Localization.Languages["ru"].Keys, StringComparer.OrdinalIgnoreCase).Count(), "every English key has a Russian value");
                 Equal(11.5f, reloaded.Application.ConsoleFontSize, "console font size");
@@ -396,10 +399,11 @@ namespace CmdsManager.Tests
 
                     var elapsed = Stopwatch.StartNew();
                     RichTextBox output = null;
+                    TabControl tabs = null;
                     while (elapsed.Elapsed < TimeSpan.FromSeconds(5))
                     {
                         System.Windows.Forms.Application.DoEvents();
-                        var tabs = console.Controls.OfType<TabControl>().FirstOrDefault();
+                        tabs = console.Controls.OfType<TabControl>().FirstOrDefault();
                         if (tabs != null && tabs.TabPages.Count > 0)
                             output = tabs.TabPages[0].Controls.OfType<RichTextBox>().FirstOrDefault();
                         if (output != null && output.Text.Contains("строка-19999")) break;
@@ -410,6 +414,104 @@ namespace CmdsManager.Tests
                     Assert(!output.Text.Contains("[4242 OUT]"), "console text has no PID OUT prefix");
                     Assert(output.TextLength <= 200000, "console history is bounded");
                     Assert(Math.Abs(output.Font.SizeInPoints - 12f) < 0.1f, "configured console font size is applied");
+                    Assert(tabs.TabPages[0].Text.StartsWith("● ", StringComparison.Ordinal), "running console tab has a filled activity marker");
+                    Assert(tabs.TabPages[0].Text.Contains(text["Console.Running"]), "running console tab has localized status text");
+
+                    console.EnqueueExited(new ScriptInstanceEventArgs(scriptId, "Fast output", processId, DateTime.Now, true, 0));
+                    elapsed.Restart();
+                    while (elapsed.Elapsed < TimeSpan.FromSeconds(2) &&
+                        !tabs.TabPages[0].Text.StartsWith("○ ", StringComparison.Ordinal))
+                    {
+                        System.Windows.Forms.Application.DoEvents();
+                        Thread.Sleep(10);
+                    }
+
+                    Assert(tabs.TabPages[0].Text.StartsWith("○ ", StringComparison.Ordinal), "exited console tab has an inactive marker");
+                    Assert(tabs.TabPages[0].Text.Contains(text.Get("Console.Exited", 0)), "exited console tab has the exit code");
+                }
+            });
+        }
+
+        private static void TestRunningVisualIndicator()
+        {
+            WithTemporaryDirectory(directory =>
+            {
+                var scriptPath = Path.Combine(directory, "indicator.ps1");
+                File.WriteAllText(scriptPath, "Start-Sleep -Seconds 20\r\n", Encoding.ASCII);
+                var store = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini"));
+                var configuration = store.LoadOrCreate();
+                configuration.Localization.Language = "en";
+                var script = new ScriptDefinition
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Indicator",
+                    Path = scriptPath,
+                    Launch = new LaunchProfile
+                    {
+                        Interpreter = ScriptInterpreter.WindowsPowerShell,
+                        CaptureOutput = false,
+                        WindowMode = ScriptWindowMode.Hidden,
+                        StopPolicy = ScriptStopPolicy.Kill,
+                        StopTimeoutSeconds = 0
+                    }
+                };
+                configuration.Scripts.Add(script);
+                var state = new ConfigurationState(configuration);
+                var text = new LocalizationService(state);
+                var commandBuilder = new ScriptCommandBuilder(directory);
+
+                using (var logger = new SimpleFileLogger(Path.Combine(directory, "logs"), 1))
+                using (var supervisor = new ProcessSupervisor(commandBuilder, logger, () => false))
+                using (var form = new MainForm(state, store, supervisor,
+                    new WindowsScriptEditorLauncher(commandBuilder), new NoOpStartupRegistration(), logger, text))
+                {
+                    var formHandle = form.Handle;
+                    Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
+                    var grid = FindControl<DataGridView>(form);
+                    Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
+
+                    supervisor.Start(script, string.Empty);
+                    var elapsed = Stopwatch.StartNew();
+                    DataGridViewRow row = null;
+                    var runningVisible = false;
+                    while (elapsed.Elapsed < TimeSpan.FromSeconds(3))
+                    {
+                        System.Windows.Forms.Application.DoEvents();
+                        row = grid.Rows.Cast<DataGridViewRow>().FirstOrDefault(item => script.Id.Equals(item.Tag));
+                        if (row != null && string.Equals(Convert.ToString(row.Cells["State"].Value),
+                            text["Main.State.Running"], StringComparison.Ordinal))
+                        {
+                            runningVisible = true;
+                            break;
+                        }
+                        Thread.Sleep(10);
+                    }
+
+                    Assert(runningVisible, "main grid receives the running state");
+                    row = grid.Rows.Cast<DataGridViewRow>().FirstOrDefault(item => script.Id.Equals(item.Tag));
+                    Assert(row != null, "running script remains visible in the main grid");
+                    var marker = Convert.ToString(row.Cells["Activity"].Value);
+                    var runtime = supervisor.GetSnapshot(script.Id);
+                    var cells = string.Join(", ", grid.Columns.Cast<DataGridViewColumn>()
+                        .Select(column => column.Name + "='" + Convert.ToString(row.Cells[column.Name].Value) + "'"));
+                    Assert(marker == "●" || marker == "◉", "running script has a filled activity marker; actual marker is '" +
+                        marker + "', runtime is " + runtime.State + ", cells: " + cells);
+                    Equal(Color.FromArgb(234, 248, 239), row.DefaultCellStyle.BackColor, "running row has a pale green background");
+                    Assert(row.Cells["Activity"].Style.ForeColor.G > row.Cells["Activity"].Style.ForeColor.R,
+                        "running activity marker is green");
+
+                    supervisor.StopAsync(script.Id).GetAwaiter().GetResult();
+                    elapsed.Restart();
+                    while (elapsed.Elapsed < TimeSpan.FromSeconds(3))
+                    {
+                        System.Windows.Forms.Application.DoEvents();
+                        row = grid.Rows.Cast<DataGridViewRow>().FirstOrDefault(item => script.Id.Equals(item.Tag));
+                        if (row == null) continue;
+                        marker = Convert.ToString(row.Cells["Activity"].Value);
+                        if (marker == "○") break;
+                        Thread.Sleep(10);
+                    }
+                    Equal("○", marker, "stopped script has an inactive marker");
                 }
             });
         }
@@ -549,6 +651,24 @@ namespace CmdsManager.Tests
                     }
                 }
             }
+        }
+
+        private static T FindControl<T>(Control root) where T : Control
+        {
+            var match = root as T;
+            if (match != null) return match;
+            foreach (Control child in root.Controls)
+            {
+                match = FindControl<T>(child);
+                if (match != null) return match;
+            }
+            return null;
+        }
+
+        private sealed class NoOpStartupRegistration : IApplicationStartupRegistration
+        {
+            public string RegisteredCommand => string.Empty;
+            public void Synchronize(bool enabled) { }
         }
 
         private static void Run(string name, Action test)

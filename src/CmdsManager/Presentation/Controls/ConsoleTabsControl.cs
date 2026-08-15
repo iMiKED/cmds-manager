@@ -44,7 +44,7 @@ namespace CmdsManager.Presentation.Controls
         private readonly ConcurrentQueue<ConsoleEvent> _events = new ConcurrentQueue<ConsoleEvent>();
         private readonly Dictionary<int, ConsoleSession> _sessions = new Dictionary<int, ConsoleSession>();
         private readonly HashSet<int> _suppressedProcesses = new HashSet<int>();
-        private readonly TabControl _tabs = new TabControl { Dock = DockStyle.Fill };
+        private readonly TabControl _tabs = new TabControl { Dock = DockStyle.Fill, ShowToolTips = true };
         private readonly Label _empty = new Label
         {
             Dock = DockStyle.Fill,
@@ -360,8 +360,13 @@ namespace CmdsManager.Presentation.Controls
                 name = name.Substring(0, 27) + "…";
             }
 
-            session.Page.Text = name + " [" + session.ProcessId + "]" +
-                (session.ExitCode.HasValue ? " · " + _text.Get("Console.Exited", session.ExitCode.Value) : string.Empty);
+            var status = session.ExitCode.HasValue
+                ? _text.Get("Console.Exited", session.ExitCode.Value)
+                : _text["Console.Running"];
+            session.Page.Text = (session.ExitCode.HasValue ? "○ " : "● ") +
+                name + " [" + session.ProcessId + "] · " + status;
+            session.Page.ToolTipText = (session.ScriptName ?? string.Empty) +
+                " [" + session.ProcessId + "] · " + status;
         }
 
         private void UpdateEmptyState()

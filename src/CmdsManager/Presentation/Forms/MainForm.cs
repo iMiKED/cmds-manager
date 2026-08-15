@@ -23,6 +23,8 @@ namespace CmdsManager.Presentation.Forms
         private readonly IExecutionLog _log;
         private readonly LocalizationService _text;
         private readonly DataGridView _grid = new DataGridView();
+        private readonly Timer _activityTimer = new Timer { Interval = 500 };
+        private readonly Font _activityFont = new Font("Segoe UI Symbol", 11f, FontStyle.Bold, GraphicsUnit.Point);
         private readonly ToolStripTextBox _filter = new ToolStripTextBox();
         private readonly ConsoleTabsControl _console;
         private readonly ToolStripButton _addButton;
@@ -43,6 +45,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly ToolStripMenuItem _contextEditFile = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextFolder = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextDelete = new ToolStripMenuItem();
+        private bool _activityPulse;
 
         public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
             IScriptEditorLauncher editor, IApplicationStartupRegistration startup, IExecutionLog log, LocalizationService text)
@@ -110,7 +113,9 @@ namespace CmdsManager.Presentation.Forms
             _supervisor.InstanceStarted += HandleInstanceStarted;
             _supervisor.InstanceExited += HandleInstanceExited;
             _text.Changed += HandleLocalizationChanged;
+            _activityTimer.Tick += HandleActivityTick;
             ApplyLocalization();
+            _activityTimer.Start();
         }
 
         public event EventHandler ExitRequested;
@@ -185,6 +190,10 @@ namespace CmdsManager.Presentation.Forms
                 _supervisor.InstanceStarted -= HandleInstanceStarted;
                 _supervisor.InstanceExited -= HandleInstanceExited;
                 _text.Changed -= HandleLocalizationChanged;
+                _activityTimer.Stop();
+                _activityTimer.Tick -= HandleActivityTick;
+                _activityTimer.Dispose();
+                _activityFont.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -202,6 +211,14 @@ namespace CmdsManager.Presentation.Forms
             _grid.RowHeadersVisible = false;
             _grid.BackgroundColor = SystemColors.Window;
             _grid.BorderStyle = BorderStyle.None;
+            var activityColumn = Column("Activity", 34);
+            activityColumn.MinimumWidth = 34;
+            activityColumn.Resizable = DataGridViewTriState.False;
+            activityColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
+            activityColumn.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            activityColumn.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            activityColumn.DefaultCellStyle.Font = _activityFont;
+            _grid.Columns.Add(activityColumn);
             _grid.Columns.Add(Column("Name", 170));
             _grid.Columns.Add(Column("Type", 65));
             _grid.Columns.Add(Column("Interpreter", 150));
@@ -244,6 +261,8 @@ namespace CmdsManager.Presentation.Forms
             _exitButton.Text = _text["Main.Exit"];
             _filterLabel.Text = _text["Main.Filter"];
             _filter.ToolTipText = _text["Main.FilterHint"];
+            _grid.Columns["Activity"].HeaderText = "●";
+            _grid.Columns["Activity"].ToolTipText = _text["Main.Column.ActivityHint"];
             _grid.Columns["Name"].HeaderText = _text["Main.Column.Name"];
             _grid.Columns["Type"].HeaderText = _text["Main.Column.Type"];
             _grid.Columns["Interpreter"].HeaderText = _text["Main.Column.Interpreter"];
@@ -275,22 +294,17 @@ namespace CmdsManager.Presentation.Forms
                     continue;
 
                 var runtime = _supervisor.GetSnapshot(script.Id);
-                var rowIndex = _grid.Rows.Add(script.Name, type, InterpreterText(script),
+                var rowIndex = _grid.Rows.Add(ActivityGlyph(runtime.State), script.Name, type, InterpreterText(script),
                     script.Launch.AutoStartWithApplication ? _text["Common.Yes"] : _text["Common.No"], StateText(runtime),
                     runtime.ProcessId?.ToString() ?? "-", runtime.StartedAt?.ToString("g") ?? "-",
                     runtime.LastExitCode?.ToString() ?? "-", script.Path);
                 var row = _grid.Rows[rowIndex];
                 row.Tag = script.Id;
-                if (!script.Enabled) row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
-                if (runtime.State == ScriptRuntimeState.Failed)
-                {
-                    row.DefaultCellStyle.BackColor = Color.MistyRose;
-                    row.Cells["State"].ToolTipText = runtime.Error;
-                }
+                ApplyRuntimeVisual(row, script, runtime);
                 if (selectedId == script.Id)
                 {
                     row.Selected = true;
-                    _grid.CurrentCell = row.Cells[0];
+                    _grid.CurrentCell = row.Cells["Name"];
                 }
             }
             UpdateButtons();
@@ -433,6 +447,111 @@ namespace CmdsManager.Presentation.Forms
         private void HandleStateChanged(object sender, ScriptStateChangedEventArgs args)
         {
             if (!IsDisposed && IsHandleCreated) BeginInvoke((Action)RefreshGrid);
+        }
+
+        private void HandleActivityTick(object sender, EventArgs args)
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+
+            _activityPulse = !_activityPulse;
+            foreach (DataGridViewRow row in _grid.Rows)
+            {
+                if (!(row.Tag is Guid)) continue;
+                var scriptId = (Guid)row.Tag;
+                var script = Configuration.Scripts.FirstOrDefault(item => item.Id == scriptId);
+                if (script == null) continue;
+                ApplyRuntimeVisual(row, script, _supervisor.GetSnapshot(scriptId));
+            }
+        }
+
+        private void ApplyRuntimeVisual(DataGridViewRow row, ScriptDefinition script, ScriptRuntimeSnapshot runtime)
+        {
+            var active = runtime.State == ScriptRuntimeState.Starting ||
+                runtime.State == ScriptRuntimeState.Running || runtime.State == ScriptRuntimeState.Stopping;
+            var rowColor = script.Enabled || active ? SystemColors.ControlText : SystemColors.GrayText;
+            if (row.DefaultCellStyle.ForeColor != rowColor) row.DefaultCellStyle.ForeColor = rowColor;
+
+            var stateText = StateText(runtime);
+            SetCellText(row.Cells["State"], stateText);
+            SetCellText(row.Cells["Pid"], runtime.ProcessId?.ToString() ?? "-");
+            SetCellText(row.Cells["Started"], runtime.StartedAt?.ToString("g") ?? "-");
+            SetCellText(row.Cells["ExitCode"], runtime.LastExitCode?.ToString() ?? "-");
+
+            Color backgroundColor;
+            switch (runtime.State)
+            {
+                case ScriptRuntimeState.Starting:
+                    backgroundColor = Color.FromArgb(255, 250, 225);
+                    break;
+                case ScriptRuntimeState.Running:
+                    backgroundColor = Color.FromArgb(234, 248, 239);
+                    break;
+                case ScriptRuntimeState.Stopping:
+                    backgroundColor = Color.FromArgb(255, 243, 224);
+                    break;
+                case ScriptRuntimeState.Failed:
+                    backgroundColor = Color.MistyRose;
+                    break;
+                default:
+                    backgroundColor = SystemColors.Window;
+                    break;
+            }
+            if (row.DefaultCellStyle.BackColor != backgroundColor)
+                row.DefaultCellStyle.BackColor = backgroundColor;
+
+            var indicator = row.Cells["Activity"];
+            SetCellText(indicator, ActivityGlyph(runtime.State));
+            var indicatorColor = ActivityColor(runtime.State);
+            if (indicator.Style.ForeColor != indicatorColor) indicator.Style.ForeColor = indicatorColor;
+            if (indicator.Style.SelectionForeColor != indicatorColor) indicator.Style.SelectionForeColor = indicatorColor;
+            if (!string.Equals(indicator.ToolTipText, stateText, StringComparison.Ordinal))
+                indicator.ToolTipText = stateText;
+
+            var state = row.Cells["State"];
+            var stateToolTip = runtime.State == ScriptRuntimeState.Failed && !string.IsNullOrWhiteSpace(runtime.Error)
+                ? runtime.Error
+                : stateText;
+            if (!string.Equals(state.ToolTipText, stateToolTip, StringComparison.Ordinal))
+                state.ToolTipText = stateToolTip;
+        }
+
+        private static void SetCellText(DataGridViewCell cell, string value)
+        {
+            if (!string.Equals(Convert.ToString(cell.Value), value, StringComparison.Ordinal))
+                cell.Value = value;
+        }
+
+        private string ActivityGlyph(ScriptRuntimeState state)
+        {
+            switch (state)
+            {
+                case ScriptRuntimeState.Starting:
+                case ScriptRuntimeState.Stopping:
+                    return _activityPulse ? "◐" : "◓";
+                case ScriptRuntimeState.Running:
+                    return _activityPulse ? "●" : "◉";
+                case ScriptRuntimeState.Failed:
+                    return "●";
+                default:
+                    return "○";
+            }
+        }
+
+        private Color ActivityColor(ScriptRuntimeState state)
+        {
+            switch (state)
+            {
+                case ScriptRuntimeState.Starting:
+                    return Color.Goldenrod;
+                case ScriptRuntimeState.Running:
+                    return _activityPulse ? Color.FromArgb(24, 160, 88) : Color.FromArgb(17, 116, 67);
+                case ScriptRuntimeState.Stopping:
+                    return Color.DarkOrange;
+                case ScriptRuntimeState.Failed:
+                    return Color.Firebrick;
+                default:
+                    return Color.Gray;
+            }
         }
         private void HandleOutputReceived(object sender, ScriptOutputEventArgs args) { _console.EnqueueOutput(args); }
         private void HandleInstanceStarted(object sender, ScriptInstanceEventArgs args) { _console.EnqueueStarted(args); }
