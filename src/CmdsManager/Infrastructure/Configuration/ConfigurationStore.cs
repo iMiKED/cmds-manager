@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 1;
+        private const int CurrentVersion = 2;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -97,7 +97,14 @@ namespace CmdsManager.Infrastructure.Configuration
             var text = File.ReadAllText(ConfigPath, _utf8);
             var ini = IniDocument.Parse(text);
             var configuration = ParseConfiguration(ini);
+            var requiresUpgrade = RequiresUpgrade(ini, configuration.Application.ConfigVersion);
+            configuration.Application.ConfigVersion = CurrentVersion;
             ValidateConfiguration(configuration);
+            if (requiresUpgrade)
+            {
+                WriteAtomically(BuildIni(configuration).Serialize());
+            }
+
             _loadedHash = ComputeHash(ConfigPath);
             return configuration;
         }
@@ -147,9 +154,12 @@ namespace CmdsManager.Infrastructure.Configuration
             app.LogLevel = ini.Get("Application", "LogLevel", app.LogLevel);
             app.LogRetentionDays = ReadInt(ini, "Application", "LogRetentionDays", 14, 1, 3650);
             app.LogScriptOutput = ReadBool(ini, "Application", "LogScriptOutput", false);
+            app.ConsoleFontName = ini.Get("Application", "ConsoleFontName", app.ConsoleFontName);
+            app.ConsoleFontSize = ReadFloat(ini, "Application", "ConsoleFontSize", app.ConsoleFontSize, 6f, 48f);
 
             result.Defaults = ReadLaunchProfile(ini, "Defaults", new LaunchProfile(), false);
             result.PowerShell7Path = ini.Get("PowerShell", "PowerShell7Path", string.Empty);
+            result.Localization = ReadLocalization(ini);
 
             var identifiers = new HashSet<Guid>();
             foreach (var section in ini.SectionNames.Where(name => name.StartsWith("Script:", StringComparison.OrdinalIgnoreCase)))
@@ -189,6 +199,7 @@ namespace CmdsManager.Infrastructure.Configuration
             profile.Arguments = ini.Get(section, "Arguments", fallback.Arguments ?? string.Empty);
             profile.WorkingDirectory = ini.Get(section, "WorkingDirectory", fallback.WorkingDirectory ?? string.Empty);
             profile.CaptureOutput = ReadBool(ini, section, "CaptureOutput", fallback.CaptureOutput);
+            profile.OutputEncoding = ReadEnum(ini, section, "OutputEncoding", fallback.OutputEncoding);
             profile.AllowParallelInstances = ReadBool(ini, section, "AllowParallelInstances", fallback.AllowParallelInstances);
             profile.StopPolicy = ReadEnum(ini, section, "StopPolicy", fallback.StopPolicy);
             profile.StopTimeoutSeconds = ReadInt(ini, section, "StopTimeoutSeconds", fallback.StopTimeoutSeconds, 0, 3600);
@@ -219,9 +230,25 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set("Application", "LogLevel", app.LogLevel ?? "Information");
             ini.Set("Application", "LogRetentionDays", app.LogRetentionDays);
             ini.Set("Application", "LogScriptOutput", Bool(app.LogScriptOutput));
+            ini.Set("Application", "ConsoleFontName", app.ConsoleFontName ?? "Consolas");
+            ini.Set("Application", "ConsoleFontSize", app.ConsoleFontSize.ToString("0.##", CultureInfo.InvariantCulture));
 
             WriteLaunchProfile(ini, "Defaults", configuration.Defaults, false);
             ini.Set("PowerShell", "PowerShell7Path", configuration.PowerShell7Path ?? string.Empty);
+
+            var localization = configuration.Localization;
+            if (localization == null || localization.Languages == null || localization.Languages.Count == 0)
+            {
+                localization = LocalizationDefaults.Create();
+            }
+            ini.Set("Localization", "Language", localization.Language ?? "ru");
+            foreach (var language in localization.Languages.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                foreach (var text in language.Value.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+                {
+                    ini.Set("Strings." + language.Key, text.Key, (text.Value ?? string.Empty).Replace("\r", string.Empty).Replace("\n", "\\n"));
+                }
+            }
 
             foreach (var script in configuration.Scripts.OrderBy(item => item.Launch.AutoStartOrder).ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
             {
@@ -243,6 +270,7 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set(section, "WorkingDirectory", profile.WorkingDirectory ?? string.Empty);
             ini.Set(section, "WindowMode", profile.WindowMode);
             ini.Set(section, "CaptureOutput", Bool(profile.CaptureOutput));
+            ini.Set(section, "OutputEncoding", profile.OutputEncoding);
             ini.Set(section, "AllowParallelInstances", Bool(profile.AllowParallelInstances));
             if (includeAutoStart)
             {
@@ -257,7 +285,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
         private static void ValidateConfiguration(AppConfiguration configuration)
         {
-            if (configuration.Application == null || configuration.Defaults == null || configuration.Scripts == null)
+            if (configuration.Application == null || configuration.Defaults == null || configuration.Localization == null || configuration.Scripts == null)
             {
                 throw new ConfigurationValidationException("Application", "", "configuration object is incomplete");
             }
@@ -270,6 +298,20 @@ namespace CmdsManager.Infrastructure.Configuration
             if (string.IsNullOrWhiteSpace(configuration.Application.EditorPath))
             {
                 throw new ConfigurationValidationException("Application", "EditorPath", "value is required");
+            }
+
+            if (string.IsNullOrWhiteSpace(configuration.Application.ConsoleFontName) || configuration.Application.ConsoleFontSize < 6f || configuration.Application.ConsoleFontSize > 48f)
+            {
+                throw new ConfigurationValidationException("Application", "ConsoleFont", "font name and size from 6 to 48 are required");
+            }
+
+            Dictionary<string, string> selectedLanguage;
+            if (string.IsNullOrWhiteSpace(configuration.Localization.Language) ||
+                configuration.Localization.Languages == null ||
+                !configuration.Localization.Languages.TryGetValue(configuration.Localization.Language, out selectedLanguage) ||
+                selectedLanguage.Count == 0)
+            {
+                throw new ConfigurationValidationException("Localization", "Language", "selected language has no string table");
             }
 
             var ids = new HashSet<Guid>();
@@ -364,6 +406,74 @@ namespace CmdsManager.Infrastructure.Configuration
             }
 
             return value;
+        }
+
+        private static float ReadFloat(IniDocument ini, string section, string key, float defaultValue, float minimum, float maximum)
+        {
+            string raw;
+            if (!ini.TryGet(section, key, out raw))
+            {
+                return defaultValue;
+            }
+
+            float value;
+            if (!float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value) || value < minimum || value > maximum)
+            {
+                throw new ConfigurationValidationException(section, key, string.Format(CultureInfo.InvariantCulture, "expected number from {0} to {1}", minimum, maximum));
+            }
+
+            return value;
+        }
+
+        private static LocalizationSettings ReadLocalization(IniDocument ini)
+        {
+            var localization = LocalizationDefaults.Create();
+            localization.Language = ini.Get("Localization", "Language", localization.Language).Trim();
+            foreach (var section in ini.SectionNames.Where(name => name.StartsWith("Strings.", StringComparison.OrdinalIgnoreCase)))
+            {
+                var language = section.Substring("Strings.".Length).Trim();
+                if (language.Length == 0)
+                {
+                    continue;
+                }
+
+                Dictionary<string, string> values;
+                if (!localization.Languages.TryGetValue(language, out values))
+                {
+                    values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    localization.Languages[language] = values;
+                }
+
+                foreach (var pair in ini.GetSection(section))
+                {
+                    values[pair.Key] = pair.Value;
+                }
+            }
+
+            return localization;
+        }
+
+        private static bool RequiresUpgrade(IniDocument ini, int loadedVersion)
+        {
+            if (loadedVersion != CurrentVersion || !ini.HasSection("Localization"))
+            {
+                return true;
+            }
+
+            var defaults = LocalizationDefaults.Create();
+            foreach (var language in defaults.Languages)
+            {
+                foreach (var pair in language.Value)
+                {
+                    string ignored;
+                    if (!ini.TryGet("Strings." + language.Key, pair.Key, out ignored))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static T ReadEnum<T>(IniDocument ini, string section, string key, T defaultValue) where T : struct

@@ -138,7 +138,7 @@ namespace CmdsManager.Infrastructure.Execution
 
                 if (spec.CaptureOutput)
                 {
-                    var encoding = GetOutputEncoding(spec.Interpreter);
+                    var encoding = GetOutputEncoding(spec.OutputEncoding);
                     process.StandardOutput = CreateReader(ref stdoutRead, encoding);
                     process.StandardError = CreateReader(ref stderrRead, encoding);
                 }
@@ -251,16 +251,21 @@ namespace CmdsManager.Infrastructure.Execution
             return new StreamReader(stream, encoding, true, 4096);
         }
 
-        private static Encoding GetOutputEncoding(ScriptInterpreter interpreter)
+        private static Encoding GetOutputEncoding(ScriptOutputEncoding outputEncoding)
         {
-            if (interpreter == ScriptInterpreter.PowerShell7)
+            switch (outputEncoding)
             {
-                return new UTF8Encoding(false, false);
+                case ScriptOutputEncoding.Utf8:
+                    return new UTF8Encoding(false, false);
+                case ScriptOutputEncoding.Windows1251:
+                    return Encoding.GetEncoding(1251);
+                case ScriptOutputEncoding.Utf16LittleEndian:
+                    return Encoding.Unicode;
             }
 
             try
             {
-                return Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+                return Encoding.GetEncoding((int)NativeMethods.GetOEMCP());
             }
             catch (ArgumentException)
             {

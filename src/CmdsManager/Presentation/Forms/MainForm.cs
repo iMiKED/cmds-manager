@@ -3,41 +3,49 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Configuration;
 using CmdsManager.Infrastructure.Execution;
+using CmdsManager.Presentation.Controls;
 
 namespace CmdsManager.Presentation.Forms
 {
     public sealed class MainForm : Form
     {
-        private const int MaxOutputCharactersPerScript = 100000;
         private readonly ConfigurationState _state;
         private readonly ConfigurationStore _store;
         private readonly ProcessSupervisor _supervisor;
         private readonly IScriptEditorLauncher _editor;
         private readonly IApplicationStartupRegistration _startup;
         private readonly IExecutionLog _log;
+        private readonly LocalizationService _text;
         private readonly DataGridView _grid = new DataGridView();
-        private readonly RichTextBox _output = new RichTextBox();
         private readonly ToolStripTextBox _filter = new ToolStripTextBox();
-        private readonly Dictionary<Guid, StringBuilder> _outputByScript = new Dictionary<Guid, StringBuilder>();
-        private readonly ToolStripButton _startButton;
-        private readonly ToolStripButton _stopButton;
+        private readonly ConsoleTabsControl _console;
+        private readonly ToolStripButton _addButton;
         private readonly ToolStripButton _editButton;
         private readonly ToolStripButton _deleteButton;
+        private readonly ToolStripButton _startButton;
+        private readonly ToolStripButton _stopButton;
+        private readonly ToolStripButton _startAllButton;
+        private readonly ToolStripButton _stopAllButton;
+        private readonly ToolStripButton _reloadButton;
+        private readonly ToolStripButton _settingsButton;
+        private readonly ToolStripButton _aboutButton;
+        private readonly ToolStripButton _exitButton;
+        private readonly ToolStripLabel _filterLabel = new ToolStripLabel();
+        private readonly ToolStripMenuItem _contextStart = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _contextStop = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _contextEdit = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _contextEditFile = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _contextFolder = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _contextDelete = new ToolStripMenuItem();
 
-        public MainForm(
-            ConfigurationState state,
-            ConfigurationStore store,
-            ProcessSupervisor supervisor,
-            IScriptEditorLauncher editor,
-            IApplicationStartupRegistration startup,
-            IExecutionLog log)
+        public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
+            IScriptEditorLauncher editor, IApplicationStartupRegistration startup, IExecutionLog log, LocalizationService text)
         {
             _state = state ?? throw new ArgumentNullException(nameof(state));
             _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -45,39 +53,36 @@ namespace CmdsManager.Presentation.Forms
             _editor = editor ?? throw new ArgumentNullException(nameof(editor));
             _startup = startup ?? throw new ArgumentNullException(nameof(startup));
             _log = log ?? throw new ArgumentNullException(nameof(log));
+            _text = text ?? throw new ArgumentNullException(nameof(text));
+            _console = new ConsoleTabsControl(_text, () => Configuration.Application) { Dock = DockStyle.Fill };
 
             Text = "CmdsManager";
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(900, 560);
-            Size = new Size(1180, 720);
+            MinimumSize = new Size(880, 520);
+            Size = new Size(1120, 680);
             Icon = SystemIcons.Application;
 
             var strip = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, RenderMode = ToolStripRenderMode.System };
-            var add = Button("Добавить", (sender, args) => AddScript());
-            _editButton = Button("Изменить", (sender, args) => EditSelected());
-            _deleteButton = Button("Удалить", async (sender, args) => await DeleteSelectedAsync());
-            _startButton = Button("Запустить", (sender, args) => StartSelected());
-            _stopButton = Button("Остановить", async (sender, args) => await StopSelectedAsync());
-            var startAll = Button("Запустить всё", (sender, args) => RunAllEnabled());
-            var stopAll = Button("Остановить всё", async (sender, args) => await StopAllAsync());
-            var reload = Button("Перечитать INI", (sender, args) => ReloadConfiguration());
-            var settings = Button("Настройки", (sender, args) => OpenSettings());
-            var about = Button("О программе", (sender, args) => ShowAbout());
-            var exit = Button("Выход", (sender, args) => ExitRequested?.Invoke(this, EventArgs.Empty));
+            _addButton = Button((sender, args) => AddScript());
+            _editButton = Button((sender, args) => EditSelected());
+            _deleteButton = Button(async (sender, args) => await DeleteSelectedAsync());
+            _startButton = Button((sender, args) => StartSelected());
+            _stopButton = Button(async (sender, args) => await StopSelectedAsync());
+            _startAllButton = Button((sender, args) => RunAllEnabled());
+            _stopAllButton = Button(async (sender, args) => await StopAllAsync());
+            _reloadButton = Button((sender, args) => ReloadConfiguration());
+            _settingsButton = Button((sender, args) => OpenSettings());
+            _aboutButton = Button((sender, args) => ShowAbout());
+            _exitButton = Button((sender, args) => ExitRequested?.Invoke(this, EventArgs.Empty));
             _filter.AutoSize = false;
-            _filter.Width = 180;
-            _filter.ToolTipText = "Фильтр по имени, пути и типу";
+            _filter.Width = 160;
             _filter.TextChanged += (sender, args) => RefreshGrid();
             strip.Items.AddRange(new ToolStripItem[]
             {
-                add, _editButton, _deleteButton,
-                new ToolStripSeparator(),
-                _startButton, _stopButton, startAll, stopAll,
-                new ToolStripSeparator(),
-                reload, settings, about,
-                new ToolStripSeparator(),
-                new ToolStripLabel("Фильтр:"), _filter,
-                new ToolStripSeparator(), exit
+                _addButton, _editButton, _deleteButton, new ToolStripSeparator(),
+                _startButton, _stopButton, _startAllButton, _stopAllButton, new ToolStripSeparator(),
+                _reloadButton, _settingsButton, _aboutButton, new ToolStripSeparator(),
+                _filterLabel, _filter, new ToolStripSeparator(), _exitButton
             });
 
             ConfigureGrid();
@@ -85,64 +90,36 @@ namespace CmdsManager.Presentation.Forms
             {
                 Dock = DockStyle.Fill,
                 Orientation = Orientation.Horizontal,
-                SplitterDistance = 430,
+                SplitterDistance = 400,
                 Panel1MinSize = 220,
                 Panel2MinSize = 100
             };
             split.Panel1.Controls.Add(_grid);
-
-            _output.Dock = DockStyle.Fill;
-            _output.ReadOnly = true;
-            _output.WordWrap = false;
-            _output.BackColor = Color.FromArgb(28, 28, 28);
-            _output.ForeColor = Color.Gainsboro;
-            _output.Font = new Font(FontFamily.GenericMonospace, 9f);
-            split.Panel2.Controls.Add(_output);
-
+            split.Panel2.Controls.Add(_console);
             Controls.Add(split);
             Controls.Add(strip);
             strip.Dock = DockStyle.Top;
 
-            _grid.SelectionChanged += (sender, args) =>
-            {
-                ShowSelectedOutput();
-                UpdateButtons();
-            };
-            _grid.CellDoubleClick += (sender, args) =>
-            {
-                if (args.RowIndex >= 0)
-                {
-                    EditSelected();
-                }
-            };
-
+            _grid.SelectionChanged += (sender, args) => UpdateButtons();
+            _grid.CellDoubleClick += (sender, args) => { if (args.RowIndex >= 0) EditSelected(); };
             FormClosing += HandleFormClosing;
-            Resize += (sender, args) =>
-            {
-                if (WindowState == FormWindowState.Minimized)
-                {
-                    Hide();
-                }
-            };
+            Resize += (sender, args) => { if (WindowState == FormWindowState.Minimized) Hide(); };
 
             _supervisor.StateChanged += HandleStateChanged;
             _supervisor.OutputReceived += HandleOutputReceived;
-            RefreshGrid();
+            _supervisor.InstanceStarted += HandleInstanceStarted;
+            _supervisor.InstanceExited += HandleInstanceExited;
+            _text.Changed += HandleLocalizationChanged;
+            ApplyLocalization();
         }
 
         public event EventHandler ExitRequested;
-
         public bool AllowClose { get; set; }
-
         public AppConfiguration Configuration => _state.Current;
 
         public void ShowFromTray()
         {
-            if (WindowState == FormWindowState.Minimized)
-            {
-                WindowState = FormWindowState.Normal;
-            }
-
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
             Show();
             Activate();
             BringToFront();
@@ -150,14 +127,8 @@ namespace CmdsManager.Presentation.Forms
 
         public void ToggleFromTray()
         {
-            if (Visible && WindowState != FormWindowState.Minimized)
-            {
-                Hide();
-            }
-            else
-            {
-                ShowFromTray();
-            }
+            if (Visible && WindowState != FormWindowState.Minimized) Hide();
+            else ShowFromTray();
         }
 
         public void RunAllEnabled()
@@ -165,44 +136,44 @@ namespace CmdsManager.Presentation.Forms
             var errors = new List<string>();
             foreach (var script in Configuration.Scripts.Where(item => item.Enabled).OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
             {
-                try
-                {
-                    _supervisor.Start(script, Configuration.PowerShell7Path);
-                }
-                catch (InvalidOperationException exception)
-                {
-                    errors.Add(script.Name + ": " + exception.Message);
-                }
-                catch (Exception exception)
-                {
-                    errors.Add(script.Name + ": " + exception.Message);
-                }
+                try { _supervisor.Start(script, Configuration.PowerShell7Path); }
+                catch (Exception exception) { errors.Add(script.Name + ": " + exception.Message); }
             }
 
             if (errors.Count > 0)
+                MessageBox.Show(this, string.Join(Environment.NewLine, errors), _text["Main.RunTitle"], MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        public void RunScript(string selector)
+        {
+            selector = (selector ?? string.Empty).Trim();
+            Guid identifier;
+            var byId = Guid.TryParse(selector, out identifier);
+            var script = Configuration.Scripts.FirstOrDefault(item =>
+                (byId && item.Id == identifier) || item.Name.Equals(selector, StringComparison.CurrentCultureIgnoreCase));
+            if (script == null)
             {
-                MessageBox.Show(this, string.Join(Environment.NewLine, errors), "Запуск скриптов", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, _text.Get("Main.ScriptNotFound", selector), _text["Main.RunTitle"], MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
+            if (!script.Enabled)
+            {
+                MessageBox.Show(this, _text["Main.Disabled"], _text["Main.RunTitle"], MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try { _supervisor.Start(script, Configuration.PowerShell7Path); }
+            catch (Exception exception) { ShowError(_text.Get("Main.StartFailed", script.Name), exception); }
         }
 
         public async Task StopAllAsync()
         {
-            try
-            {
-                await _supervisor.StopAllAsync();
-            }
-            catch (Exception exception)
-            {
-                ShowError("Не удалось остановить все скрипты.", exception);
-            }
+            try { await _supervisor.StopAllAsync(); }
+            catch (Exception exception) { ShowError(_text["Main.StopAllFailed"], exception); }
         }
 
         public void ShowAbout()
         {
-            using (var form = new AboutForm(_store.ConfigPath))
-            {
-                form.ShowDialog(this);
-            }
+            using (var form = new AboutForm(_text)) form.ShowDialog(this);
         }
 
         protected override void Dispose(bool disposing)
@@ -211,8 +182,10 @@ namespace CmdsManager.Presentation.Forms
             {
                 _supervisor.StateChanged -= HandleStateChanged;
                 _supervisor.OutputReceived -= HandleOutputReceived;
+                _supervisor.InstanceStarted -= HandleInstanceStarted;
+                _supervisor.InstanceExited -= HandleInstanceExited;
+                _text.Changed -= HandleLocalizationChanged;
             }
-
             base.Dispose(disposing);
         }
 
@@ -229,28 +202,64 @@ namespace CmdsManager.Presentation.Forms
             _grid.RowHeadersVisible = false;
             _grid.BackgroundColor = SystemColors.Window;
             _grid.BorderStyle = BorderStyle.None;
-            _grid.Columns.Add(Column("Name", "Название", 170));
-            _grid.Columns.Add(Column("Type", "Тип", 65));
-            _grid.Columns.Add(Column("Interpreter", "Интерпретатор", 150));
-            _grid.Columns.Add(Column("AutoStart", "Авто", 55));
-            _grid.Columns.Add(Column("State", "Состояние", 105));
-            _grid.Columns.Add(Column("Pid", "PID", 70));
-            _grid.Columns.Add(Column("Started", "Запущен", 130));
-            _grid.Columns.Add(Column("ExitCode", "Код", 55));
-            var pathColumn = Column("Path", "Путь", 260);
+            _grid.Columns.Add(Column("Name", 170));
+            _grid.Columns.Add(Column("Type", 65));
+            _grid.Columns.Add(Column("Interpreter", 150));
+            _grid.Columns.Add(Column("AutoStart", 55));
+            _grid.Columns.Add(Column("State", 105));
+            _grid.Columns.Add(Column("Pid", 70));
+            _grid.Columns.Add(Column("Started", 130));
+            _grid.Columns.Add(Column("ExitCode", 55));
+            var pathColumn = Column("Path", 260);
             pathColumn.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
             _grid.Columns.Add(pathColumn);
 
             var context = new ContextMenuStrip();
-            context.Items.Add("Запустить", null, (sender, args) => StartSelected());
-            context.Items.Add("Остановить", null, async (sender, args) => await StopSelectedAsync());
-            context.Items.Add(new ToolStripSeparator());
-            context.Items.Add("Изменить запись", null, (sender, args) => EditSelected());
-            context.Items.Add("Редактировать файл", null, (sender, args) => EditSelectedFile());
-            context.Items.Add("Показать в папке", null, (sender, args) => ShowSelectedInFolder());
-            context.Items.Add(new ToolStripSeparator());
-            context.Items.Add("Удалить запись", null, async (sender, args) => await DeleteSelectedAsync());
+            _contextStart.Click += (sender, args) => StartSelected();
+            _contextStop.Click += async (sender, args) => await StopSelectedAsync();
+            _contextEdit.Click += (sender, args) => EditSelected();
+            _contextEditFile.Click += (sender, args) => EditSelectedFile();
+            _contextFolder.Click += (sender, args) => ShowSelectedInFolder();
+            _contextDelete.Click += async (sender, args) => await DeleteSelectedAsync();
+            context.Items.AddRange(new ToolStripItem[]
+            {
+                _contextStart, _contextStop, new ToolStripSeparator(),
+                _contextEdit, _contextEditFile, _contextFolder, new ToolStripSeparator(), _contextDelete
+            });
             _grid.ContextMenuStrip = context;
+        }
+
+        private void ApplyLocalization()
+        {
+            _addButton.Text = _text["Main.Add"];
+            _editButton.Text = _text["Main.Edit"];
+            _deleteButton.Text = _text["Main.Delete"];
+            _startButton.Text = _text["Main.Start"];
+            _stopButton.Text = _text["Main.Stop"];
+            _startAllButton.Text = _text["Main.StartAll"];
+            _stopAllButton.Text = _text["Main.StopAll"];
+            _reloadButton.Text = _text["Main.Reload"];
+            _settingsButton.Text = _text["Main.Settings"];
+            _aboutButton.Text = _text["Main.About"];
+            _exitButton.Text = _text["Main.Exit"];
+            _filterLabel.Text = _text["Main.Filter"];
+            _filter.ToolTipText = _text["Main.FilterHint"];
+            _grid.Columns["Name"].HeaderText = _text["Main.Column.Name"];
+            _grid.Columns["Type"].HeaderText = _text["Main.Column.Type"];
+            _grid.Columns["Interpreter"].HeaderText = _text["Main.Column.Interpreter"];
+            _grid.Columns["AutoStart"].HeaderText = _text["Main.Column.AutoStart"];
+            _grid.Columns["State"].HeaderText = _text["Main.Column.State"];
+            _grid.Columns["Pid"].HeaderText = "PID";
+            _grid.Columns["Started"].HeaderText = _text["Main.Column.Started"];
+            _grid.Columns["ExitCode"].HeaderText = _text["Main.Column.ExitCode"];
+            _grid.Columns["Path"].HeaderText = _text["Main.Column.Path"];
+            _contextStart.Text = _text["Main.Start"];
+            _contextStop.Text = _text["Main.Stop"];
+            _contextEdit.Text = _text["Main.Context.EditEntry"];
+            _contextEditFile.Text = _text["Main.Context.EditFile"];
+            _contextFolder.Text = _text["Main.Context.ShowFolder"];
+            _contextDelete.Text = _text["Main.Context.DeleteEntry"];
+            RefreshGrid();
         }
 
         private void RefreshGrid()
@@ -258,61 +267,40 @@ namespace CmdsManager.Presentation.Forms
             var selectedId = SelectedScript?.Id;
             var filter = _filter.Text?.Trim() ?? string.Empty;
             _grid.Rows.Clear();
-
             foreach (var script in Configuration.Scripts.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
             {
                 var type = Path.GetExtension(script.Path).TrimStart('.').ToUpperInvariant();
-                if (filter.Length > 0 &&
-                    script.Name.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 &&
-                    script.Path.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 &&
-                    type.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
-                {
+                if (filter.Length > 0 && script.Name.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 &&
+                    script.Path.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 && type.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
                     continue;
-                }
 
                 var runtime = _supervisor.GetSnapshot(script.Id);
-                var rowIndex = _grid.Rows.Add(
-                    script.Name,
-                    type,
-                    InterpreterText(script),
-                    script.Launch.AutoStartWithApplication ? "Да" : "Нет",
-                    StateText(runtime),
-                    runtime.ProcessId?.ToString() ?? "-",
-                    runtime.StartedAt?.ToString("g") ?? "-",
-                    runtime.LastExitCode?.ToString() ?? "-",
-                    script.Path);
+                var rowIndex = _grid.Rows.Add(script.Name, type, InterpreterText(script),
+                    script.Launch.AutoStartWithApplication ? _text["Common.Yes"] : _text["Common.No"], StateText(runtime),
+                    runtime.ProcessId?.ToString() ?? "-", runtime.StartedAt?.ToString("g") ?? "-",
+                    runtime.LastExitCode?.ToString() ?? "-", script.Path);
                 var row = _grid.Rows[rowIndex];
                 row.Tag = script.Id;
-                if (!script.Enabled)
-                {
-                    row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
-                }
-
+                if (!script.Enabled) row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
                 if (runtime.State == ScriptRuntimeState.Failed)
                 {
                     row.DefaultCellStyle.BackColor = Color.MistyRose;
                     row.Cells["State"].ToolTipText = runtime.Error;
                 }
-
                 if (selectedId == script.Id)
                 {
                     row.Selected = true;
                     _grid.CurrentCell = row.Cells[0];
                 }
             }
-
             UpdateButtons();
         }
 
         private void AddScript()
         {
-            using (var form = new ScriptEditorForm(null, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath)))
+            using (var form = new ScriptEditorForm(null, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath), _text))
             {
-                if (form.ShowDialog(this) != DialogResult.OK)
-                {
-                    return;
-                }
-
+                if (form.ShowDialog(this) != DialogResult.OK) return;
                 var candidate = Configuration.Clone();
                 candidate.Scripts.Add(form.Result);
                 SaveConfiguration(candidate);
@@ -322,18 +310,10 @@ namespace CmdsManager.Presentation.Forms
         private void EditSelected()
         {
             var selected = SelectedScript;
-            if (selected == null)
+            if (selected == null) return;
+            using (var form = new ScriptEditorForm(selected, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath), _text))
             {
-                return;
-            }
-
-            using (var form = new ScriptEditorForm(selected, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath)))
-            {
-                if (form.ShowDialog(this) != DialogResult.OK)
-                {
-                    return;
-                }
-
+                if (form.ShowDialog(this) != DialogResult.OK) return;
                 var candidate = Configuration.Clone();
                 var index = candidate.Scripts.FindIndex(item => item.Id == selected.Id);
                 candidate.Scripts[index] = form.Result;
@@ -344,151 +324,84 @@ namespace CmdsManager.Presentation.Forms
         private async Task DeleteSelectedAsync()
         {
             var selected = SelectedScript;
-            if (selected == null)
-            {
-                return;
-            }
-
+            if (selected == null) return;
             if (_supervisor.IsRunning(selected.Id))
             {
-                MessageBox.Show(this, "Сначала остановите скрипт, затем удалите запись.", "Удаление записи", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, _text["Main.DeleteRunning"], _text["Main.DeleteTitle"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
             if (Configuration.Application.ConfirmBeforeDelete)
             {
-                var answer = MessageBox.Show(
-                    this,
-                    "Удалить запись «" + selected.Name + "»?\n\nСам файл скрипта удалён не будет.",
-                    "Удаление записи",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2);
-                if (answer != DialogResult.Yes)
-                {
-                    return;
-                }
+                var answer = MessageBox.Show(this, _text.Get("Main.DeleteConfirm", selected.Name), _text["Main.DeleteTitle"],
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                if (answer != DialogResult.Yes) return;
             }
-
             await Task.Yield();
             var candidate = Configuration.Clone();
             candidate.Scripts.RemoveAll(item => item.Id == selected.Id);
             SaveConfiguration(candidate);
-            _outputByScript.Remove(selected.Id);
         }
 
         private void StartSelected()
         {
             var selected = SelectedScript;
-            if (selected == null)
-            {
-                return;
-            }
-
+            if (selected == null) return;
             if (!selected.Enabled)
             {
-                MessageBox.Show(this, "Запись отключена. Включите её в редакторе перед запуском.", "Запуск скрипта", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, _text["Main.Disabled"], _text["Main.RunTitle"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
-            try
-            {
-                _supervisor.Start(selected, Configuration.PowerShell7Path);
-            }
-            catch (Exception exception)
-            {
-                ShowError("Не удалось запустить «" + selected.Name + "».", exception);
-            }
+            try { _supervisor.Start(selected, Configuration.PowerShell7Path); }
+            catch (Exception exception) { ShowError(_text.Get("Main.StartFailed", selected.Name), exception); }
         }
 
         private async Task StopSelectedAsync()
         {
             var selected = SelectedScript;
-            if (selected == null)
-            {
-                return;
-            }
-
-            try
-            {
-                await _supervisor.StopAsync(selected.Id);
-            }
-            catch (Exception exception)
-            {
-                ShowError("Не удалось остановить «" + selected.Name + "».", exception);
-            }
+            if (selected == null) return;
+            try { await _supervisor.StopAsync(selected.Id); }
+            catch (Exception exception) { ShowError(_text.Get("Main.StopFailed", selected.Name), exception); }
         }
 
         private void EditSelectedFile()
         {
             var selected = SelectedScript;
-            if (selected == null)
-            {
-                return;
-            }
-
-            try
-            {
-                _editor.Edit(selected.Path, Configuration.Application);
-            }
-            catch (Exception exception)
-            {
-                ShowError("Не удалось открыть редактор.", exception);
-            }
+            if (selected == null) return;
+            try { _editor.Edit(selected.Path, Configuration.Application); }
+            catch (Exception exception) { ShowError(_text["Main.EditorFailed"], exception); }
         }
 
         private void ShowSelectedInFolder()
         {
             var selected = SelectedScript;
-            if (selected == null)
-            {
-                return;
-            }
-
-            try
-            {
-                _editor.ShowInFolder(selected.Path);
-            }
-            catch (Exception exception)
-            {
-                ShowError("Не удалось открыть папку.", exception);
-            }
+            if (selected == null) return;
+            try { _editor.ShowInFolder(selected.Path); }
+            catch (Exception exception) { ShowError(_text["Main.FolderFailed"], exception); }
         }
 
         private void OpenSettings()
         {
-            using (var form = new SettingsForm(Configuration.Application, Configuration.PowerShell7Path))
+            using (var form = new SettingsForm(Configuration.Application, Configuration.PowerShell7Path, Configuration.Localization, _text))
             {
-                if (form.ShowDialog(this) != DialogResult.OK)
-                {
-                    return;
-                }
-
+                if (form.ShowDialog(this) != DialogResult.OK) return;
                 var candidate = Configuration.Clone();
                 candidate.Application = form.SettingsResult;
                 candidate.PowerShell7Path = form.PowerShell7PathResult;
+                candidate.Localization.Language = form.LanguageResult;
                 var previousStartup = Configuration.Application.StartWithWindows;
-
                 try
                 {
                     _startup.Synchronize(candidate.Application.StartWithWindows);
                     _store.Save(candidate);
                     _state.Current = candidate;
-                    RefreshGrid();
-                    MessageBox.Show(this, "Настройки сохранены. Новый срок хранения журналов применяется после перезапуска приложения.", "Настройки", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    _console.ApplySettings();
+                    MessageBox.Show(this, _text["Main.SettingsSaved"], _text["Main.Settings"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception exception)
                 {
-                    try
-                    {
-                        _startup.Synchronize(previousStartup);
-                    }
-                    catch (Exception rollbackException)
-                    {
-                        _log.Error("Unable to roll back the startup registration.", rollbackException);
-                    }
-
-                    ShowError("Не удалось сохранить настройки.", exception);
+                    try { _startup.Synchronize(previousStartup); }
+                    catch (Exception rollbackException) { _log.Error("Unable to roll back the startup registration.", rollbackException); }
+                    ShowError(_text["Main.SettingsSaveFailed"], exception);
                 }
             }
         }
@@ -497,99 +410,46 @@ namespace CmdsManager.Presentation.Forms
         {
             if (_supervisor.HasRunningProcesses)
             {
-                MessageBox.Show(this, "Перед перечитыванием INI остановите все скрипты.", "Перечитать INI", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, _text["Main.ReloadRunning"], _text["Main.Reload"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
             try
             {
                 var reloaded = _store.Reload();
                 _startup.Synchronize(reloaded.Application.StartWithWindows);
                 _state.Current = reloaded;
-                RefreshGrid();
+                _console.ApplySettings();
                 _log.Information("Configuration reloaded from disk.");
             }
-            catch (Exception exception)
-            {
-                ShowError("Не удалось перечитать INI.", exception);
-            }
+            catch (Exception exception) { ShowError(_text["Main.ReloadFailed"], exception); }
         }
 
         private void SaveConfiguration(AppConfiguration candidate)
         {
-            try
-            {
-                _store.Save(candidate);
-                _state.Current = candidate;
-                RefreshGrid();
-            }
-            catch (Exception exception)
-            {
-                ShowError("Не удалось сохранить INI.", exception);
-            }
+            try { _store.Save(candidate); _state.Current = candidate; }
+            catch (Exception exception) { ShowError(_text["Main.SaveFailed"], exception); }
         }
 
         private void HandleStateChanged(object sender, ScriptStateChangedEventArgs args)
         {
-            if (IsDisposed || !IsHandleCreated)
-            {
-                return;
-            }
-
-            BeginInvoke((Action)RefreshGrid);
+            if (!IsDisposed && IsHandleCreated) BeginInvoke((Action)RefreshGrid);
         }
+        private void HandleOutputReceived(object sender, ScriptOutputEventArgs args) { _console.EnqueueOutput(args); }
+        private void HandleInstanceStarted(object sender, ScriptInstanceEventArgs args) { _console.EnqueueStarted(args); }
+        private void HandleInstanceExited(object sender, ScriptInstanceEventArgs args) { _console.EnqueueExited(args); }
 
-        private void HandleOutputReceived(object sender, ScriptOutputEventArgs args)
+        private void HandleLocalizationChanged(object sender, EventArgs args)
         {
-            if (IsDisposed || !IsHandleCreated)
-            {
-                return;
-            }
-
-            BeginInvoke((Action)(() => AppendOutput(args)));
-        }
-
-        private void AppendOutput(ScriptOutputEventArgs args)
-        {
-            StringBuilder builder;
-            if (!_outputByScript.TryGetValue(args.ScriptId, out builder))
-            {
-                builder = new StringBuilder();
-                _outputByScript.Add(args.ScriptId, builder);
-            }
-
-            builder.Append('[').Append(args.ProcessId).Append(args.IsError ? " ERR] " : " OUT] ").AppendLine(args.Line);
-            if (builder.Length > MaxOutputCharactersPerScript)
-            {
-                builder.Remove(0, builder.Length - MaxOutputCharactersPerScript);
-            }
-
-            if (SelectedScript?.Id == args.ScriptId)
-            {
-                _output.Text = builder.ToString();
-                _output.SelectionStart = _output.TextLength;
-                _output.ScrollToCaret();
-            }
-        }
-
-        private void ShowSelectedOutput()
-        {
-            var selected = SelectedScript;
-            StringBuilder builder;
-            _output.Text = selected != null && _outputByScript.TryGetValue(selected.Id, out builder) ? builder.ToString() : string.Empty;
-            _output.SelectionStart = _output.TextLength;
-            _output.ScrollToCaret();
+            if (IsDisposed || !IsHandleCreated) return;
+            if (InvokeRequired) BeginInvoke((Action)ApplyLocalization);
+            else ApplyLocalization();
         }
 
         private ScriptDefinition SelectedScript
         {
             get
             {
-                if (_grid.SelectedRows.Count == 0 || !(_grid.SelectedRows[0].Tag is Guid))
-                {
-                    return null;
-                }
-
+                if (_grid.SelectedRows.Count == 0 || !(_grid.SelectedRows[0].Tag is Guid)) return null;
                 var id = (Guid)_grid.SelectedRows[0].Tag;
                 return Configuration.Scripts.FirstOrDefault(item => item.Id == id);
             }
@@ -610,14 +470,8 @@ namespace CmdsManager.Presentation.Forms
             if (!AllowClose && args.CloseReason == CloseReason.UserClosing)
             {
                 args.Cancel = true;
-                if (Configuration.Application.CloseToTray)
-                {
-                    Hide();
-                }
-                else
-                {
-                    ExitRequested?.Invoke(this, EventArgs.Empty);
-                }
+                if (Configuration.Application.CloseToTray) Hide();
+                else ExitRequested?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -627,56 +481,42 @@ namespace CmdsManager.Presentation.Forms
             MessageBox.Show(this, message + Environment.NewLine + Environment.NewLine + exception.Message, "CmdsManager", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        private static ToolStripButton Button(string text, EventHandler click)
+        private static ToolStripButton Button(EventHandler click)
         {
-            var button = new ToolStripButton(text) { DisplayStyle = ToolStripItemDisplayStyle.Text };
+            var button = new ToolStripButton { DisplayStyle = ToolStripItemDisplayStyle.Text };
             button.Click += click;
             return button;
         }
 
-        private static DataGridViewTextBoxColumn Column(string name, string title, int width)
+        private static DataGridViewTextBoxColumn Column(string name, int width)
         {
-            return new DataGridViewTextBoxColumn { Name = name, HeaderText = title, Width = width, SortMode = DataGridViewColumnSortMode.Automatic };
+            return new DataGridViewTextBoxColumn { Name = name, Width = width, SortMode = DataGridViewColumnSortMode.Automatic };
         }
 
         private static string InterpreterText(ScriptDefinition script)
         {
-            var interpreter = script.Launch.Interpreter == ScriptInterpreter.Auto
-                ? ScriptDefinitionValidator.ResolveAutoInterpreter(script.Path)
-                : script.Launch.Interpreter;
+            var interpreter = script.Launch.Interpreter == ScriptInterpreter.Auto ? ScriptDefinitionValidator.ResolveAutoInterpreter(script.Path) : script.Launch.Interpreter;
             switch (interpreter)
             {
-                case ScriptInterpreter.Cmd:
-                    return "CMD";
-                case ScriptInterpreter.WindowsPowerShell:
-                    return "Windows PS 5.1";
-                case ScriptInterpreter.PowerShell7:
-                    return "PowerShell 7";
-                case ScriptInterpreter.CScript:
-                    return "cscript.exe";
-                case ScriptInterpreter.WScript:
-                    return "wscript.exe";
-                default:
-                    return interpreter.ToString();
+                case ScriptInterpreter.Cmd: return "CMD";
+                case ScriptInterpreter.WindowsPowerShell: return "Windows PS 5.1";
+                case ScriptInterpreter.PowerShell7: return "PowerShell 7";
+                case ScriptInterpreter.CScript: return "cscript.exe";
+                case ScriptInterpreter.WScript: return "wscript.exe";
+                default: return interpreter.ToString();
             }
         }
 
-        private static string StateText(ScriptRuntimeSnapshot snapshot)
+        private string StateText(ScriptRuntimeSnapshot snapshot)
         {
             switch (snapshot.State)
             {
-                case ScriptRuntimeState.Starting:
-                    return "Запуск…";
-                case ScriptRuntimeState.Running:
-                    return snapshot.ActiveCount > 1 ? "Работает (" + snapshot.ActiveCount + ")" : "Работает";
-                case ScriptRuntimeState.Stopping:
-                    return "Остановка…";
-                case ScriptRuntimeState.Exited:
-                    return "Завершён";
-                case ScriptRuntimeState.Failed:
-                    return "Ошибка";
-                default:
-                    return "Остановлен";
+                case ScriptRuntimeState.Starting: return _text["Main.State.Starting"];
+                case ScriptRuntimeState.Running: return snapshot.ActiveCount > 1 ? _text.Get("Main.State.RunningMany", snapshot.ActiveCount) : _text["Main.State.Running"];
+                case ScriptRuntimeState.Stopping: return _text["Main.State.Stopping"];
+                case ScriptRuntimeState.Exited: return _text["Main.State.Exited"];
+                case ScriptRuntimeState.Failed: return _text["Main.State.Failed"];
+                default: return _text["Main.State.Stopped"];
             }
         }
     }

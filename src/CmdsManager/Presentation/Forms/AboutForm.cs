@@ -1,98 +1,47 @@
 using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
-using System.Text;
 using System.Windows.Forms;
+using CmdsManager.Application;
 
 namespace CmdsManager.Presentation.Forms
 {
     public sealed class AboutForm : Form
     {
-        private const string RepositoryUrl = "";
-
-        public AboutForm(string configPath)
+        public AboutForm(LocalizationService text)
         {
-            Text = "О программе CmdsManager";
+            if (text == null) throw new ArgumentNullException(nameof(text));
+            Text = text["About.Title"];
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(520, 330);
+            ClientSize = new Size(390, 165);
             Icon = SystemIcons.Application;
 
             var assembly = Assembly.GetExecutingAssembly();
-            var version = assembly.GetName().Version?.ToString() ?? "-";
-            var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? version;
-
-            var title = new Label
-            {
-                AutoSize = true,
-                Font = new Font(Font.FontFamily, 16, FontStyle.Bold),
-                Text = "CmdsManager",
-                Location = new Point(24, 22)
-            };
-            var description = new Label
-            {
-                AutoSize = true,
-                MaximumSize = new Size(470, 0),
-                Text = "Portable-менеджер CMD, BAT, PowerShell и VBS-скриптов для Windows.",
-                Location = new Point(26, 62)
-            };
-            var details = new Label
-            {
-                AutoSize = true,
-                MaximumSize = new Size(470, 0),
-                Text = "Версия: " + informational + Environment.NewLine +
-                       ".NET Framework runtime: " + Environment.Version + Environment.NewLine +
-                       "Windows: " + Environment.OSVersion.VersionString + Environment.NewLine +
-                       "Конфигурация: " + configPath + Environment.NewLine +
-                       "Git: " + (RepositoryUrl.Length == 0 ? "локальный репозиторий, remote не настроен" : RepositoryUrl),
-                Location = new Point(26, 108)
-            };
-            var repository = new LinkLabel
-            {
-                AutoSize = true,
-                Text = "Открыть репозиторий",
-                Location = new Point(26, 224),
-                Enabled = RepositoryUrl.Length > 0
-            };
-            repository.LinkClicked += (sender, args) =>
-            {
-                if (RepositoryUrl.Length > 0)
-                {
-                    Process.Start(new ProcessStartInfo(RepositoryUrl) { UseShellExecute = true });
-                }
-            };
-
-            var copy = new Button
-            {
-                Text = "Копировать диагностику",
-                AutoSize = true,
-                Location = new Point(26, 268)
-            };
-            copy.Click += (sender, args) =>
-            {
-                var diagnostics = new StringBuilder()
-                    .AppendLine("CmdsManager " + informational)
-                    .AppendLine(".NET Framework runtime: " + Environment.Version)
-                    .AppendLine("Windows: " + Environment.OSVersion.VersionString)
-                    .AppendLine("Configuration: " + configPath)
-                    .ToString();
-                Clipboard.SetText(diagnostics);
-            };
-
-            var close = new Button
-            {
-                Text = "Закрыть",
-                DialogResult = DialogResult.OK,
-                AutoSize = true,
-                Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
-                Location = new Point(414, 268)
-            };
-
-            Controls.AddRange(new Control[] { title, description, details, repository, copy, close });
+            var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? assembly.GetName().Version?.ToString() ?? "-";
+            var title = new Label { AutoSize = true, Font = new Font(Font.FontFamily, 15, FontStyle.Bold), Text = "CmdsManager" };
+            var description = new Label { AutoSize = true, MaximumSize = new Size(350, 0), Text = text["About.Description"] };
+            var versionLabel = new Label { AutoSize = true, ForeColor = SystemColors.GrayText, Text = text.Get("About.Version", version) };
+            var close = new Button { Text = text["Common.Close"], DialogResult = DialogResult.OK, AutoSize = true };
+            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true };
+            buttons.Controls.Add(close);
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(14), ColumnCount = 1, RowCount = 4 };
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            title.Margin = new Padding(0, 0, 0, 6);
+            description.Margin = new Padding(1, 0, 0, 5);
+            versionLabel.Margin = new Padding(1, 0, 0, 0);
+            layout.Controls.Add(title, 0, 0);
+            layout.Controls.Add(description, 0, 1);
+            layout.Controls.Add(versionLabel, 0, 2);
+            layout.Controls.Add(buttons, 0, 3);
+            Controls.Add(layout);
             AcceptButton = close;
             CancelButton = close;
         }

@@ -47,4 +47,24 @@ namespace CmdsManager.Application
         public string Line { get; }
         public bool IsError { get; }
     }
+
+    public sealed class ScriptInstanceEventArgs : EventArgs
+    {
+        public ScriptInstanceEventArgs(Guid scriptId, string scriptName, int processId, DateTime startedAt, bool capturesOutput, int? exitCode)
+        {
+            ScriptId = scriptId;
+            ScriptName = scriptName ?? string.Empty;
+            ProcessId = processId;
+            StartedAt = startedAt;
+            CapturesOutput = capturesOutput;
+            ExitCode = exitCode;
+        }
+
+        public Guid ScriptId { get; }
+        public string ScriptName { get; }
+        public int ProcessId { get; }
+        public DateTime StartedAt { get; }
+        public bool CapturesOutput { get; }
+        public int? ExitCode { get; }
+    }
 }

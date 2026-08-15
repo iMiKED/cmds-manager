@@ -20,6 +20,7 @@ namespace CmdsManager.Infrastructure.Execution
             internal NativeProcess Native { get; set; }
             internal DateTime StartedAt { get; set; }
             internal bool StopRequested { get; set; }
+            internal bool CapturesOutput { get; set; }
             internal Task OutputTask { get; set; }
             internal Task ErrorTask { get; set; }
         }
@@ -41,6 +42,8 @@ namespace CmdsManager.Infrastructure.Execution
 
         public event EventHandler<ScriptStateChangedEventArgs> StateChanged;
         public event EventHandler<ScriptOutputEventArgs> OutputReceived;
+        public event EventHandler<ScriptInstanceEventArgs> InstanceStarted;
+        public event EventHandler<ScriptInstanceEventArgs> InstanceExited;
 
         public bool HasRunningProcesses
         {
@@ -84,7 +87,8 @@ namespace CmdsManager.Infrastructure.Execution
                 {
                     Script = script.Clone(),
                     Native = native,
-                    StartedAt = DateTime.Now
+                    StartedAt = DateTime.Now,
+                    CapturesOutput = spec.CaptureOutput
                 };
 
                 lock (_sync)
@@ -99,6 +103,7 @@ namespace CmdsManager.Infrastructure.Execution
                     list.Add(session);
                 }
 
+                InstanceStarted?.Invoke(this, new ScriptInstanceEventArgs(script.Id, script.Name, native.ProcessId, session.StartedAt, spec.CaptureOutput, null));
                 session.OutputTask = StartReader(session, native.StandardOutput, false);
                 session.ErrorTask = StartReader(session, native.StandardError, true);
                 Task.Factory.StartNew(
@@ -329,6 +334,7 @@ namespace CmdsManager.Infrastructure.Execution
             }
 
             _log.Information("Script '" + SafeName(session.Script.Name) + "' exited with code " + exitCode + ".");
+            InstanceExited?.Invoke(this, new ScriptInstanceEventArgs(session.Script.Id, session.Script.Name, session.Native.ProcessId, session.StartedAt, session.CapturesOutput, exitCode));
             StateChanged?.Invoke(this, new ScriptStateChangedEventArgs(CloneSnapshot(snapshot)));
         }
 

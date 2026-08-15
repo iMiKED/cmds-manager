@@ -109,6 +109,14 @@ namespace CmdsManager.Infrastructure.Configuration
             return false;
         }
 
+        public IReadOnlyDictionary<string, string> GetSection(string section)
+        {
+            Dictionary<string, string> values;
+            return _sections.TryGetValue(section, out values)
+                ? new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
         public void Set(string section, string key, object value)
         {
             ValidateToken(section, nameof(section));

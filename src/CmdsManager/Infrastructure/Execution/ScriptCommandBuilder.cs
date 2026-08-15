@@ -14,6 +14,7 @@ namespace CmdsManager.Infrastructure.Execution
         public bool CaptureOutput { get; set; }
         public ScriptWindowMode WindowMode { get; set; }
         public ScriptInterpreter Interpreter { get; set; }
+        public ScriptOutputEncoding OutputEncoding { get; set; }
     }
 
     public sealed class ScriptCommandBuilder
@@ -53,7 +54,8 @@ namespace CmdsManager.Infrastructure.Execution
                 WorkingDirectory = workingDirectory,
                 CaptureOutput = script.Launch.CaptureOutput,
                 WindowMode = script.Launch.WindowMode,
-                Interpreter = interpreter
+                Interpreter = interpreter,
+                OutputEncoding = script.Launch.OutputEncoding
             };
 
             switch (interpreter)
@@ -65,11 +67,11 @@ namespace CmdsManager.Infrastructure.Execution
                 case ScriptInterpreter.WindowsPowerShell:
                     spec.ExecutablePath = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
                     EnsureExecutable(spec.ExecutablePath, "Windows PowerShell 5.1");
-                    spec.Arguments = "-NoLogo -NoProfile -File " + QuoteWindowsArgument(scriptPath) + AppendArguments(userArguments);
+                    spec.Arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + QuoteWindowsArgument(scriptPath) + AppendArguments(userArguments);
                     break;
                 case ScriptInterpreter.PowerShell7:
                     spec.ExecutablePath = ResolvePowerShell7(configuredPowerShell7Path);
-                    spec.Arguments = "-NoLogo -NoProfile -File " + QuoteWindowsArgument(scriptPath) + AppendArguments(userArguments);
+                    spec.Arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + QuoteWindowsArgument(scriptPath) + AppendArguments(userArguments);
                     break;
                 case ScriptInterpreter.CScript:
                     spec.ExecutablePath = Path.Combine(Environment.SystemDirectory, "cscript.exe");

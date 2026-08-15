@@ -20,6 +20,15 @@ namespace CmdsManager.Domain
         Minimized
     }
 
+    public enum ScriptOutputEncoding
+    {
+        Auto,
+        Utf8,
+        Oem,
+        Windows1251,
+        Utf16LittleEndian
+    }
+
     public enum ScriptStopPolicy
     {
         GracefulThenKill,
@@ -43,6 +52,7 @@ namespace CmdsManager.Domain
         public string Arguments { get; set; } = string.Empty;
         public string WorkingDirectory { get; set; } = string.Empty;
         public bool CaptureOutput { get; set; } = true;
+        public ScriptOutputEncoding OutputEncoding { get; set; } = ScriptOutputEncoding.Auto;
         public bool AllowParallelInstances { get; set; }
         public bool AutoStartWithApplication { get; set; }
         public int AutoStartOrder { get; set; } = 100;
@@ -74,7 +84,7 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 1;
+        public int ConfigVersion { get; set; } = 2;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
         public bool StartWithWindows { get; set; }
@@ -86,10 +96,30 @@ namespace CmdsManager.Domain
         public string LogLevel { get; set; } = "Information";
         public int LogRetentionDays { get; set; } = 14;
         public bool LogScriptOutput { get; set; }
+        public string ConsoleFontName { get; set; } = "Consolas";
+        public float ConsoleFontSize { get; set; } = 10f;
 
         public ApplicationSettings Clone()
         {
             return (ApplicationSettings)MemberwiseClone();
+        }
+    }
+
+    public sealed class LocalizationSettings
+    {
+        public string Language { get; set; } = "ru";
+        public Dictionary<string, Dictionary<string, string>> Languages { get; set; } =
+            new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+
+        public LocalizationSettings Clone()
+        {
+            var clone = new LocalizationSettings { Language = Language ?? "ru" };
+            foreach (var language in Languages)
+            {
+                clone.Languages[language.Key] = new Dictionary<string, string>(language.Value, StringComparer.OrdinalIgnoreCase);
+            }
+
+            return clone;
         }
     }
 
@@ -98,6 +128,7 @@ namespace CmdsManager.Domain
         public ApplicationSettings Application { get; set; } = new ApplicationSettings();
         public LaunchProfile Defaults { get; set; } = new LaunchProfile();
         public string PowerShell7Path { get; set; } = string.Empty;
+        public LocalizationSettings Localization { get; set; } = new LocalizationSettings();
         public List<ScriptDefinition> Scripts { get; set; } = new List<ScriptDefinition>();
 
         public AppConfiguration Clone()
@@ -106,7 +137,8 @@ namespace CmdsManager.Domain
             {
                 Application = Application?.Clone() ?? new ApplicationSettings(),
                 Defaults = Defaults?.Clone() ?? new LaunchProfile(),
-                PowerShell7Path = PowerShell7Path ?? string.Empty
+                PowerShell7Path = PowerShell7Path ?? string.Empty,
+                Localization = Localization?.Clone() ?? new LocalizationSettings()
             };
 
             foreach (var script in Scripts)

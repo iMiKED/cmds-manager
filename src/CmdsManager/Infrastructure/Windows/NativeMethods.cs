@@ -170,6 +170,9 @@ namespace CmdsManager.Infrastructure.Windows
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool CloseHandle(IntPtr handle);
 
+        [DllImport("kernel32.dll")]
+        internal static extern uint GetOEMCP();
+
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetForegroundWindow(IntPtr window);

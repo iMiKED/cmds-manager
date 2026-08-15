@@ -15,7 +15,13 @@ namespace CmdsManager.Application
         public AppConfiguration Current
         {
             get => _current;
-            set => _current = value ?? throw new ArgumentNullException(nameof(value));
+            set
+            {
+                _current = value ?? throw new ArgumentNullException(nameof(value));
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
         }
+
+        public event EventHandler Changed;
     }
 }
