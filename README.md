@@ -1,47 +1,224 @@
 # Cmds Manager
 
-Compact portable manager for CMD, BAT, PowerShell, and VBS scripts on Windows.
+Compact portable manager for CMD, BAT, PowerShell, and VBS scripts on Windows,
+maintained by [iMiKED from 4PDA](https://4pda.to/forum/index.php?showuser=1017942).
 
-Current version: **1.0.0**
+[![Build](https://github.com/iMiKED/cmds-manager/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/iMiKED/cmds-manager/actions/workflows/build.yml)
+[![CodeQL](https://github.com/iMiKED/cmds-manager/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/iMiKED/cmds-manager/actions/workflows/codeql.yml)
+[![Latest Release](https://img.shields.io/github/v/release/iMiKED/cmds-manager?include_prereleases&label=release)](https://github.com/iMiKED/cmds-manager/releases)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-danceworldtv-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/danceworldtv)
+[![PayPal](https://img.shields.io/badge/PayPal-imiked-00457C?logo=paypal&logoColor=white)](https://paypal.me/imiked)
+[![Boosty](https://img.shields.io/badge/Boosty-donate-f15f2c)](https://boosty.to/danceworldtv/donate)
+[![Ozon Bank](https://img.shields.io/badge/Ozon%20Bank-SBP%20transfer-005BFF)](https://finance.ozon.ru/apps/sbp/ozonbankpay/019a0a87-1f4a-7df8-97c7-ef32ebf9a0e3)
 
-Cmds Manager lives in the notification area and provides one place to organize,
-start, monitor, and stop scripts. It supports Windows PowerShell 5.1 and
-PowerShell 7, managed child console tabs, output encoding correction, detachable
-and full-screen consoles, per-script auto-start, application auto-start, themes,
-and INI-based configuration.
+![Cmds Manager 1.0.0](docs/cmdsmanager1.0.0.png)
+
+## Description
+
+Cmds Manager is a lightweight Windows tray application for organizing, running,
+monitoring, and stopping local automation scripts. It keeps a searchable script
+catalog in a portable INI file and presents captured output in a modern tabbed
+console workspace.
+
+The application is built with C# and Windows Forms for .NET Framework 4.8. The
+release contains one production executable and does not bundle PowerShell, .NET,
+Chromium, Qt, Python, or another large runtime.
 
 ## Features
 
-- Add, edit, remove, start, and stop `.cmd`, `.bat`, `.ps1`, and `.vbs` entries
-- Stop the complete managed process tree when a script, tab, or application closes
-- Capture output in modern console tabs, including managed child CMD launches
-- Detach a running console without restarting its process
-- Select UTF-8, OEM Windows, Windows-1251, UTF-16 LE, or automatic decoding
-- Copy or save selected text and save the complete console buffer
-- Configure console fonts, colors, opacity, Word Wrap, themes, and workspace size
-- Start selected scripts with the application and start the application with Windows
-- Use Russian or English UI strings stored in `CmdsManager.ini`
-- Run as a small Portable ZIP without elevation or bundled runtime dependencies
+### Script management
+
+- Add, edit, remove, enable, and disable script entries
+- Start or stop one script, all selected scripts, or the complete managed set
+- Open script files in an external editor without executing them accidentally
+- Configure interpreter, arguments, working directory, window mode, output
+  encoding, parallel instances, stop policy, and stop timeout per script
+- Start selected scripts automatically when Cmds Manager starts
+- Control auto-start order and per-script delay
+
+### Process supervision
+
+- Run CMD, BAT, PowerShell, and VBS scripts without elevation
+- Support Windows PowerShell 5.1 and an optional PowerShell 7 installation
+- Assign launched processes to a Windows Job Object
+- Stop the complete managed process tree when a script, console tab, or Cmds
+  Manager itself is closed
+- Redirect supported child `start ... cmd` launches back into Cmds Manager as
+  neighboring console tabs instead of separate console windows
+- Display a persistent green running indicator and live PID/state information
+
+### Console workspace
+
+- Capture stdout and stderr in a dedicated tab for every managed launch
+- Batch UI updates for responsive high-volume output
+- Decode UTF-8, Windows-1251, OEM Windows, UTF-16 LE, or mixed output in Auto mode
+- Re-decode already captured bytes after changing a tab's encoding
+- Configure the font, text color, background color, tab colors, and opacity
+- Store Word Wrap separately for every script and its managed child tabs
+- Copy selected text or save the selection/full console buffer to a file
+- Close a tab and stop its process with the tab close button
+- Detach a running tab into its own window without restarting the process
+- Maximize the console workspace or show the active console full-screen
+- Resize the console area and persist its height in the INI file
+
+### Application experience
+
+- Open or hide the main window with one click on the notification-area icon
+- Close the main window to the tray or exit explicitly
+- Start Cmds Manager with Windows for the current user
+- Save main-window position, size, maximized state, and console-pane height
+- Choose System, Light, or Dark Fluent Compact themes
+- Use English or Russian interface strings stored in the INI file
+- View version, build time, author, license, website, and donation links in About
+
+## Supported script types
+
+| File type | Interpreter options | Captured console output |
+| --- | --- | --- |
+| `.cmd`, `.bat` | `cmd.exe` | Yes |
+| `.ps1` | Windows PowerShell 5.1 or PowerShell 7 | Yes |
+| `.vbs` | `cscript.exe` or `wscript.exe` | With `cscript.exe` |
+
+`Auto` selects the interpreter from the file extension. PowerShell 7 is optional
+and is only required by entries that explicitly select it.
 
 ## Requirements
 
+### Running the application
+
 - Windows 10 or Windows 11 x64
 - .NET Framework 4.8
-- PowerShell 7 only for entries that explicitly select it
+- Write access to the extracted portable directory
+- PowerShell 7 only when selected for a script
 
-## Download and documentation
+Cmds Manager does not request administrator privileges. Processes requiring UAC
+must be launched outside the managed process tree.
 
-The release is distributed as a Portable ZIP. Extract the complete archive to a
-writable folder and run `CmdsManager.exe`.
+### Building from source
 
-The bilingual English/Russian user guide, version history, and complete INI
-reference are in [Readme.txt](Readme.txt).
+- Windows 10 or Windows 11 x64
+- Visual Studio 2022 Build Tools or Visual Studio 2022 with MSBuild
+- PowerShell 5.1 or later
+- Git
+
+The .NET Framework reference assemblies used during compilation are restored as
+a development-only NuGet dependency. They are not included in the release.
+
+## Installation
+
+1. Download the latest Portable ZIP from
+   [GitHub Releases](https://github.com/iMiKED/cmds-manager/releases).
+2. Extract the complete archive to a permanent directory where your account can
+   create and update files.
+3. Run `CmdsManager.exe`.
+4. Add scripts through the toolbar or edit `CmdsManager.ini` and choose
+   **Reload INI**.
+
+On first start, `CmdsManager.ini` is created next to the executable from the
+included `CmdsManager.ini.example` template.
+
+## Configuration
+
+Cmds Manager keeps its portable configuration beside the executable. Relative
+paths are resolved from this directory and Windows environment variables such as
+`%SystemRoot%` are expanded.
+
+| INI section | Purpose |
+| --- | --- |
+| `[Application]` | Theme, tray behavior, auto-start, editor, logs, window geometry, console appearance |
+| `[Defaults]` | Initial launch profile for newly added scripts |
+| `[PowerShell]` | Optional path to `pwsh.exe` |
+| `[Localization]` | Active language |
+| `[Strings.en]`, `[Strings.ru]` | Editable interface strings |
+| `[Script:<GUID>]` | One saved script and its complete launch profile |
+
+The complete English and Russian user guide, version history, and reference for
+every INI setting are available in [Readme.txt](Readme.txt).
+
+## Logs and privacy
+
+Application event logs are written to the `logs` directory beside the executable.
+Captured script output is not stored in logs unless `LogScriptOutput=true` is
+enabled. Script output can contain tokens, passwords, paths, or personal data, so
+output logging should only be enabled when required.
+
+## Build and test
+
+From a PowerShell prompt in the repository root:
+
+```powershell
+.\build.ps1
+```
+
+The script restores dependencies, builds Release x64, runs the standalone test
+suite, and creates a portable archive under `artifacts`:
+
+```text
+artifacts/CmdsManager-portable-<version>-win-x64.zip
+```
+
+To compile and package without running tests:
+
+```powershell
+.\build.ps1 -SkipTests
+```
+
+For release validation, the expected tag can be supplied explicitly:
+
+```powershell
+.\build.ps1 -ExpectedVersion 1.0.0
+```
+
+The command fails when the tag and `AssemblyInformationalVersion` differ.
+
+## Continuous integration and releases
+
+The [Build workflow](.github/workflows/build.yml) runs on pushes to `main`, pull
+requests, manual dispatches, and tag pushes. It builds and tests the Windows x64
+application and uploads the Portable ZIP as a workflow artifact.
+
+When a tag is pushed, the workflow verifies that the tag equals the application
+version, then creates or updates the matching GitHub Release and attaches the
+Portable ZIP. Release tags use the plain semantic version form, for example:
+
+```powershell
+git tag -a 1.0.0 -m "Cmds Manager 1.0.0"
+git push origin 1.0.0
+```
+
+The [CodeQL workflow](.github/workflows/codeql.yml) performs compiled C# security
+analysis on `main`, pull requests, manual runs, and a weekly schedule.
+
+## Portable package contents
+
+```text
+CmdsManager.exe
+CmdsManager.exe.config
+CmdsManager.ini.example
+Readme.txt
+```
+
+`README.md`, source files, build tools, test binaries, and runtime frameworks are
+not placed beside the application in the release archive.
+
+## Project layout
+
+```text
+src/CmdsManager/              Application source
+tests/CmdsManager.Tests/      Standalone integration and UI contract tests
+.github/workflows/            Build/release and CodeQL automation
+docs/                         README image assets
+assets/                       Application icon source
+build.ps1                     Release build and packaging entry point
+Readme.txt                    Portable bilingual user documentation
+```
 
 ## Support the Project
 
 If Cmds Manager saves you time, you can support the author:
 
-- Russia transfers, Ozon Bank / SBP: [open payment page](https://finance.ozon.ru/apps/sbp/ozonbankpay/019a0a87-1f4a-7df8-97c7-ef32ebf9a0e3)
+- Russia transfers: [Ozon Bank / SBP](https://finance.ozon.ru/apps/sbp/ozonbankpay/019a0a87-1f4a-7df8-97c7-ef32ebf9a0e3)
 - VISA: `4400430236422744`
 - [Buy Me a Coffee](https://buymeacoffee.com/danceworldtv)
 - [PayPal](https://paypal.me/imiked)

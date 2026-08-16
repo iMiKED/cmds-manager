@@ -1,4 +1,5 @@
-/docs/
+/docs/*
+!/docs/cmdsmanager1.0.0.png
 /.vs/
 /artifacts/
 /packages/

@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [string]$ExpectedVersion
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,6 +30,18 @@ function Remove-DirectoryWithRetry {
 
 $repositoryRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $solutionPath = Join-Path $repositoryRoot 'CmdsManager.sln'
+$assemblyInfoPath = Join-Path $repositoryRoot 'src\CmdsManager\Properties\AssemblyInfo.cs'
+$assemblyInfoText = [System.IO.File]::ReadAllText($assemblyInfoPath)
+$versionMatch = [regex]::Match($assemblyInfoText,
+    'AssemblyInformationalVersion\("(?<version>[^"\r\n]+)"\)')
+if (-not $versionMatch.Success) {
+    throw "AssemblyInformationalVersion was not found: $assemblyInfoPath"
+}
+$releaseVersion = $versionMatch.Groups['version'].Value
+if (-not [string]::IsNullOrWhiteSpace($ExpectedVersion) -and
+    -not [string]::Equals($releaseVersion, $ExpectedVersion, [StringComparison]::Ordinal)) {
+    throw "Release tag '$ExpectedVersion' does not match application version '$releaseVersion'."
+}
 $vswherePath = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 if (-not (Test-Path -LiteralPath $vswherePath)) {
     throw 'Visual Studio Installer vswhere.exe was not found.'
@@ -87,7 +100,7 @@ if (-not (Test-Path -LiteralPath $readmePath)) {
 }
 Copy-Item -LiteralPath $readmePath -Destination (Join-Path $resolvedStagingRoot 'Readme.txt')
 
-$zipPath = Join-Path $artifactsRoot 'CmdsManager-portable-1.0.0-win-x64.zip'
+$zipPath = Join-Path $artifactsRoot ("CmdsManager-portable-$releaseVersion-win-x64.zip")
 $resolvedZipPath = [System.IO.Path]::GetFullPath($zipPath)
 if (-not $resolvedZipPath.StartsWith($expectedArtifactsRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Unsafe ZIP output path: $resolvedZipPath"
@@ -113,6 +126,7 @@ catch {
 [pscustomobject]@{
     Executable = $exePath
     ExeBytes = $exeInfo.Length
+    ReleaseVersion = $releaseVersion
     BuildTimestamp = $releaseBuildTimestamp
     PortableZip = $resolvedZipPath
     ZipBytes = $zipInfo.Length

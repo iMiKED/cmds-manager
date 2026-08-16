@@ -1,0 +1,43 @@
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '24 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: C# analysis
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: manual
+
+      - name: Build analyzed source
+        shell: pwsh
+        run: .\build.ps1 -SkipTests
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4

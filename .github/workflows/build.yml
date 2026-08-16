@@ -1,0 +1,77 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows x64
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Build, test, and package
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if ($env:RELEASE_TAG) {
+            .\build.ps1 -ExpectedVersion $env:RELEASE_TAG
+          }
+          else {
+            .\build.ps1
+          }
+
+      - name: Upload Portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: CmdsManager-portable-win-x64
+          path: artifacts/CmdsManager-portable-*-win-x64.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Portable ZIP
+        uses: actions/download-artifact@v5
+        with:
+          name: CmdsManager-portable-win-x64
+          path: release-assets
+
+      - name: Create or update release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/*.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/*.zip \
+              --verify-tag \
+              --generate-notes \
+              --title "Cmds Manager $GITHUB_REF_NAME"
+          fi
