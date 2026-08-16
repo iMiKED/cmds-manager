@@ -146,6 +146,7 @@ namespace CmdsManager.Infrastructure.Execution
         private static readonly Encoding Utf8 = new UTF8Encoding(false, false);
         private static readonly Encoding Windows1251 = Encoding.GetEncoding(1251);
         private static readonly Encoding Oem = CreateOemEncoding();
+        private static readonly Encoding RussianOem866 = Encoding.GetEncoding(866);
 
         public static string Decode(byte[] bytes, ScriptOutputEncoding outputEncoding)
         {
@@ -181,9 +182,18 @@ namespace CmdsManager.Infrastructure.Execution
             }
             catch (DecoderFallbackException)
             {
-                var oem = Oem.GetString(bytes);
+                var result = Oem.GetString(bytes);
+                var resultScore = ScoreCyrillicText(result);
+                var russianOem = RussianOem866.GetString(bytes);
+                var russianOemScore = ScoreCyrillicText(russianOem);
+                if (russianOemScore > resultScore)
+                {
+                    result = russianOem;
+                    resultScore = russianOemScore;
+                }
+
                 var windows = Windows1251.GetString(bytes);
-                return ScoreCyrillicText(windows) > ScoreCyrillicText(oem) ? windows : oem;
+                return ScoreCyrillicText(windows) > resultScore ? windows : result;
             }
         }
 
