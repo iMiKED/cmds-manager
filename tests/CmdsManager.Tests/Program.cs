@@ -569,6 +569,12 @@ namespace CmdsManager.Tests
                         "settings exposes the console font, editor, editor arguments, and pwsh path fields");
                     Assert(settingsTextInputs.Select(control => AbsoluteLeft(control, settings)).Distinct().Count() == 1,
                         "settings text fields share one left edge, including console font and pwsh path");
+                    Assert(settingsTextInputs.All(control => control.GetType().Name == "FluentTextBox") &&
+                        AllControls(settings).OfType<ComboBox>().All(control => control.GetType().Name == "FluentComboBox") &&
+                        AllControls(settings).OfType<CheckBox>().All(control => control.GetType().Name == "FluentCheckBox") &&
+                        AllControls(settings).OfType<NumericUpDown>().All(control => control.GetType().Name == "FluentNumericUpDown") &&
+                        AllControls(settings).OfType<Button>().All(control => control.GetType().Name == "FluentButton"),
+                        "settings uses Fluent inputs, selectors, checkboxes, numeric fields, and buttons");
                     var numeric = AllControls(script).OfType<NumericUpDown>().ToArray();
                     Equal(3, numeric.Length, "script editor has three compact numeric settings");
                     Assert(numeric.All(control => control.Width <= 65) && numeric.Select(control => control.Parent).Distinct().Count() == 1,
@@ -889,7 +895,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.6.1", form.Text,
+                    Equal("Cmds Manager 0.6.2", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
@@ -906,6 +912,36 @@ namespace CmdsManager.Tests
                     Assert(toolbarButtons.All(button => button.Image != null) && toolbar.Height == 42 &&
                         toolbar.Renderer.GetType().Name == "FluentToolStripRenderer",
                         "toolbar uses compact icon buttons and the Fluent renderer");
+                    var renderButton = toolbar.Renderer.GetType().GetMethod("OnRenderButtonBackground",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    Assert(renderButton != null, "Fluent toolbar exposes its button background renderer");
+                    using (var normalPreview = new Bitmap(Math.Max(1, toolbarButtons[0].Width),
+                        Math.Max(1, toolbarButtons[0].Height)))
+                    using (var primaryPreview = new Bitmap(Math.Max(1, toolbarButtons[3].Width), Math.Max(1, toolbarButtons[3].Height)))
+                    {
+                        var markerColor = Color.Magenta;
+                        using (var graphics = Graphics.FromImage(normalPreview))
+                        {
+                            graphics.Clear(markerColor);
+                            renderButton.Invoke(toolbar.Renderer,
+                                new object[] { new ToolStripItemRenderEventArgs(graphics, toolbarButtons[0]) });
+                        }
+                        using (var graphics = Graphics.FromImage(primaryPreview))
+                        {
+                            graphics.Clear(markerColor);
+                            renderButton.Invoke(toolbar.Renderer,
+                                new object[] { new ToolStripItemRenderEventArgs(graphics, toolbarButtons[3]) });
+                        }
+                        Equal(markerColor.ToArgb(), normalPreview.GetPixel(normalPreview.Width / 2,
+                            normalPreview.Height / 2).ToArgb(),
+                            "normal toolbar buttons have no persistent surface or border at rest");
+                        Assert(primaryPreview.GetPixel(primaryPreview.Width / 2, primaryPreview.Height / 2).ToArgb() !=
+                            markerColor.ToArgb(), "Start keeps its persistent rounded accent surface");
+                    }
+                    var themeManager = typeof(MainForm).Assembly.GetType("CmdsManager.Presentation.Theming.AppThemeManager");
+                    Assert(themeManager.GetMethod("ApplyWindowCorners",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static) != null,
+                        "main window requests native DWM rounded corners when supported");
                     var expectedColumns = new[]
                     {
                         "Activity", "Name", "Type", "Interpreter", "AutoStart", "State", "Pid", "Started", "ExitCode", "Path"

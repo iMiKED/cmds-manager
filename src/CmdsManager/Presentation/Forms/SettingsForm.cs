@@ -13,18 +13,24 @@ namespace CmdsManager.Presentation.Forms
     public sealed class SettingsForm : Form
     {
         private readonly LocalizationService _text;
-        private readonly CheckBox _startWithWindows = new CheckBox { AutoSize = true };
-        private readonly CheckBox _startMinimized = new CheckBox { AutoSize = true };
-        private readonly CheckBox _autoStartScripts = new CheckBox { AutoSize = true };
-        private readonly CheckBox _confirmDelete = new CheckBox { AutoSize = true };
-        private readonly CheckBox _logScriptOutput = new CheckBox { AutoSize = true };
-        private readonly TextBox _editorPath = new TextBox();
-        private readonly TextBox _editorArguments = new TextBox();
-        private readonly TextBox _powerShell7Path = new TextBox();
-        private readonly NumericUpDown _retention = new NumericUpDown { Minimum = 1, Maximum = 3650, Width = 72, TextAlign = HorizontalAlignment.Right };
-        private readonly ComboBox _language = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly ComboBox _theme = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly TextBox _fontDisplay = new TextBox { ReadOnly = true };
+        private readonly CheckBox _startWithWindows = new FluentCheckBox();
+        private readonly CheckBox _startMinimized = new FluentCheckBox();
+        private readonly CheckBox _autoStartScripts = new FluentCheckBox();
+        private readonly CheckBox _confirmDelete = new FluentCheckBox();
+        private readonly CheckBox _logScriptOutput = new FluentCheckBox();
+        private readonly TextBox _editorPath = new FluentTextBox();
+        private readonly TextBox _editorArguments = new FluentTextBox();
+        private readonly TextBox _powerShell7Path = new FluentTextBox();
+        private readonly NumericUpDown _retention = new FluentNumericUpDown
+        {
+            Minimum = 1,
+            Maximum = 3650,
+            Width = 72,
+            TextAlign = HorizontalAlignment.Right
+        };
+        private readonly ComboBox _language = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly ComboBox _theme = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly TextBox _fontDisplay = new FluentTextBox { ReadOnly = true };
         private readonly Button _consoleTextColor = ColorButton();
         private readonly Button _consoleBackgroundColor = ColorButton();
         private readonly Button _tabTextColor = ColorButton();
@@ -115,8 +121,8 @@ namespace CmdsManager.Presentation.Forms
                 AutoSize = true,
                 Padding = new Padding(0, 4, 6, 5)
             };
-            var save = new Button { Text = _text["Common.Save"], AutoSize = true };
-            var cancel = new Button { Text = _text["Common.Cancel"], AutoSize = true, DialogResult = DialogResult.Cancel };
+            var save = new FluentButton { Text = _text["Common.Save"], AutoSize = true, Primary = true };
+            var cancel = new FluentButton { Text = _text["Common.Cancel"], AutoSize = true, DialogResult = DialogResult.Cancel };
             save.Click += SaveAndClose;
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
@@ -202,7 +208,7 @@ namespace CmdsManager.Presentation.Forms
             _fontDisplay.Dock = DockStyle.Fill;
             _fontDisplay.Margin = Padding.Empty;
             var panel = TwoColumnPanel();
-            var choose = new Button { Text = _text["Settings.ChooseFont"], AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
+            var choose = new FluentButton { Text = _text["Settings.ChooseFont"], AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
             choose.Click += (sender, args) =>
             {
                 Font current;
@@ -227,7 +233,7 @@ namespace CmdsManager.Presentation.Forms
             textBox.Dock = DockStyle.Fill;
             textBox.Margin = Padding.Empty;
             var panel = TwoColumnPanel();
-            var browse = new Button { Text = _text["Common.Browse"], AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
+            var browse = new FluentButton { Text = _text["Common.Browse"], AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
             browse.Click += (sender, args) =>
             {
                 using (var dialog = new OpenFileDialog { Filter = filter, CheckFileExists = true })
@@ -263,14 +269,14 @@ namespace CmdsManager.Presentation.Forms
 
         private static Button ColorButton()
         {
-            var button = new Button
+            var button = new FluentButton
             {
                 AutoSize = false,
                 Size = new Size(96, 25),
-                FlatStyle = FlatStyle.Flat,
                 TextAlign = ContentAlignment.MiddleCenter,
                 UseVisualStyleBackColor = false,
-                Margin = Padding.Empty
+                Margin = Padding.Empty,
+                UseAssignedColors = true
             };
             button.Tag = AppThemeManager.PreserveColorsTag;
             button.FlatAppearance.BorderColor = Color.FromArgb(150, 150, 150);
@@ -287,7 +293,7 @@ namespace CmdsManager.Presentation.Forms
 
         private static NumericUpDown OpacityField()
         {
-            return new NumericUpDown
+            return new FluentNumericUpDown
             {
                 Minimum = 0,
                 Maximum = 100,

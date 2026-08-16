@@ -159,7 +159,13 @@ namespace CmdsManager.Presentation.Theming
 
         internal static void ApplyControlTree(Control control, AppThemePalette palette)
         {
-            if (control == null || palette == null || Equals(control.Tag, PreserveColorsTag)) return;
+            if (control == null || palette == null) return;
+            if (Equals(control.Tag, PreserveColorsTag))
+            {
+                var preservedFluent = control as IFluentThemedControl;
+                preservedFluent?.ApplyPalette(palette);
+                return;
+            }
 
             control.ForeColor = palette.Text;
             if (Equals(control.Tag, MutedTextTag)) control.ForeColor = palette.MutedText;
@@ -204,6 +210,9 @@ namespace CmdsManager.Presentation.Theming
                 button.Padding = new Padding(5, 1, 5, 1);
             }
 
+            var fluent = control as IFluentThemedControl;
+            fluent?.ApplyPalette(palette);
+
             var link = control as LinkLabel;
             if (link != null)
             {
@@ -224,7 +233,8 @@ namespace CmdsManager.Presentation.Theming
             var grid = control as DataGridView;
             if (grid != null) ApplyGrid(grid, palette);
 
-            foreach (Control child in control.Controls) ApplyControlTree(child, palette);
+            if (!(control is NumericUpDown))
+                foreach (Control child in control.Controls) ApplyControlTree(child, palette);
         }
 
         internal static void ApplyToolStrip(ToolStrip strip, AppThemePalette palette)
@@ -303,6 +313,19 @@ namespace CmdsManager.Presentation.Theming
             catch (EntryPointNotFoundException) { }
         }
 
+        internal static void ApplyWindowCorners(Form form)
+        {
+            if (form == null || !RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+            try
+            {
+                const int round = 2;
+                var preference = round;
+                DwmSetWindowAttribute(form.Handle, 33, ref preference, sizeof(int));
+            }
+            catch (DllNotFoundException) { }
+            catch (EntryPointNotFoundException) { }
+        }
+
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
     }
@@ -335,31 +358,26 @@ namespace CmdsManager.Presentation.Theming
             if (button == null) { base.OnRenderButtonBackground(args); return; }
             var role = button.Tag is FluentToolRole ? (FluentToolRole)button.Tag : FluentToolRole.Normal;
             Color fill;
-            Color border;
             if (!button.Enabled)
             {
-                fill = role == FluentToolRole.Primary ? Color.FromArgb(80, _palette.Accent) : _palette.Surface;
-                border = role == FluentToolRole.Primary ? Color.FromArgb(110, _palette.Accent) : _palette.Border;
+                if (role != FluentToolRole.Primary) return;
+                fill = Color.FromArgb(80, _palette.Accent);
             }
             else if (role == FluentToolRole.Primary)
             {
                 fill = button.Pressed ? _palette.AccentHover : _palette.Accent;
-                border = fill;
             }
             else if (button.Pressed || button.Checked)
             {
                 fill = _palette.Pressed;
-                border = _palette.Border;
             }
             else if (button.Selected)
             {
                 fill = _palette.Hover;
-                border = _palette.Border;
             }
             else
             {
-                fill = _palette.Surface;
-                border = _palette.Border;
+                return;
             }
 
             var bounds = new RectangleF(1.5f, 1.5f,
@@ -368,10 +386,8 @@ namespace CmdsManager.Presentation.Theming
             args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (var path = RoundedRectangle(bounds, 6f))
             using (var brush = new SolidBrush(fill))
-            using (var pen = new Pen(border, 1f) { Alignment = PenAlignment.Inset })
             {
                 args.Graphics.FillPath(brush, path);
-                args.Graphics.DrawPath(pen, path);
             }
             args.Graphics.SmoothingMode = smoothing;
         }

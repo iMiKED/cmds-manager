@@ -823,6 +823,7 @@ namespace CmdsManager.Presentation.Forms
         {
             _palette = AppThemeManager.Resolve(Configuration.Application.Theme);
             AppThemeManager.ApplyWindow(this, Configuration.Application.Theme);
+            AppThemeManager.ApplyWindowCorners(this);
             AppThemeManager.ApplyToolStrip(_toolbar, _palette);
             AppThemeManager.ApplyToolStrip(_grid.ContextMenuStrip, _palette);
             _console.ApplyApplicationTheme(Configuration.Application.Theme);
