@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Build, test, and package
         shell: pwsh
@@ -39,7 +39,7 @@ jobs:
           }
 
       - name: Upload Portable ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CmdsManager-portable-win-x64
           path: artifacts/CmdsManager-portable-*-win-x64.zip
@@ -56,7 +56,7 @@ jobs:
 
     steps:
       - name: Download Portable ZIP
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: CmdsManager-portable-win-x64
           path: release-assets
