@@ -125,7 +125,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(3, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(4, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -135,10 +135,10 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(3, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
-                Equal("Auto (UTF-8/Windows OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
+                Equal(4, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
-                Equal("Авто (UTF-8/OEM Windows)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
+                Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
                     "old default Russian Auto label is migrated");
             });
         }
@@ -275,7 +275,12 @@ namespace CmdsManager.Tests
             WithTemporaryDirectory(directory =>
             {
                 const string oemPhrase = "Привет из OEM";
+                const string windowsPhrase = "Файл не найден.";
                 var oem = Encoding.GetEncoding((int)GetOEMCP());
+                Equal(windowsPhrase, OutputEncodingDecoder.Decode(Encoding.GetEncoding(1251).GetBytes(windowsPhrase),
+                    ScriptOutputEncoding.Auto), "Auto detects Windows-1251 Cyrillic");
+                Equal(windowsPhrase, OutputEncodingDecoder.Decode(oem.GetBytes(windowsPhrase),
+                    ScriptOutputEncoding.Auto), "Auto detects OEM Cyrillic");
                 if (oem.GetString(oem.GetBytes(oemPhrase)) == oemPhrase)
                 {
                     var cmdPath = Path.Combine(directory, "russian-oem.cmd");
@@ -346,6 +351,29 @@ namespace CmdsManager.Tests
                     Assert(mixedLines.Any(line => line.Contains(oemPhrase)), "Auto keeps OEM lines in a mixed stream");
                     Assert(mixedLines.Any(line => line.Contains("应用信息") && line.Contains("获取设备信息")),
                         "Auto detects UTF-8 Chinese JSON lines inside a CMD stream");
+
+                    const string windowsJson = "[HTTP RESPONSE] {\"bodyPreview\":\"Файл не найден.\"}";
+                    var windowsWriterPath = Path.Combine(directory, "write-windows1251.ps1");
+                    File.WriteAllText(windowsWriterPath,
+                        "$text = '" + windowsJson + "' + [Environment]::NewLine\r\n" +
+                        "$bytes = [Text.Encoding]::GetEncoding(1251).GetBytes($text)\r\n" +
+                        "$stream = [Console]::OpenStandardOutput()\r\n" +
+                        "$stream.Write($bytes, 0, $bytes.Length)\r\n$stream.Flush()\r\n",
+                        new UTF8Encoding(true));
+                    var windowsLines = RunAndCapture(directory, new ScriptDefinition
+                    {
+                        Name = "Windows-1251 child output",
+                        Path = windowsWriterPath,
+                        Launch = new LaunchProfile
+                        {
+                            Interpreter = ScriptInterpreter.WindowsPowerShell,
+                            OutputEncoding = ScriptOutputEncoding.Auto,
+                            WorkingDirectory = directory,
+                            CaptureOutput = true
+                        }
+                    });
+                    Assert(windowsLines.Any(line => line.Contains(windowsJson)),
+                        "Auto decodes Windows-1251 output from a child process");
                 }
 
                 var utf8Path = Path.Combine(directory, "russian-utf8.cmd");
@@ -365,6 +393,29 @@ namespace CmdsManager.Tests
                     }
                 });
                 Assert(utf8Lines.Any(line => line.Contains("Привет UTF-8")), "explicit UTF-8 decoding");
+
+                var utf16WriterPath = Path.Combine(directory, "write-utf16.ps1");
+                File.WriteAllText(utf16WriterPath,
+                    "$encoding = [Text.Encoding]::Unicode\r\n" +
+                    "$text = 'Привет UTF-16' + [Environment]::NewLine\r\n" +
+                    "$bytes = $encoding.GetPreamble() + $encoding.GetBytes($text)\r\n" +
+                    "$stream = [Console]::OpenStandardOutput()\r\n" +
+                    "$stream.Write($bytes, 0, $bytes.Length)\r\n$stream.Flush()\r\n",
+                    new UTF8Encoding(true));
+                var utf16Lines = RunAndCapture(directory, new ScriptDefinition
+                {
+                    Name = "UTF-16 output",
+                    Path = utf16WriterPath,
+                    Launch = new LaunchProfile
+                    {
+                        Interpreter = ScriptInterpreter.WindowsPowerShell,
+                        OutputEncoding = ScriptOutputEncoding.Utf16LittleEndian,
+                        WorkingDirectory = directory,
+                        CaptureOutput = true
+                    }
+                });
+                Assert(utf16Lines.Any(line => line.Contains("Привет UTF-16")),
+                    "explicit UTF-16 LE decoding keeps line framing");
             });
         }
 
@@ -433,9 +484,11 @@ namespace CmdsManager.Tests
                     about.PerformLayout();
                     settings.PerformLayout();
                     script.PerformLayout();
-                    Assert(about.ClientSize.Width <= 400 && about.ClientSize.Height <= 180, "About box is compact");
+                    Assert(about.ClientSize.Width <= 580 && about.ClientSize.Height <= 250,
+                        "About box remains compact with a 128 px icon");
                     Assert(settings.ClientSize.Width <= 530 && settings.ClientSize.Height <= 340, "settings dialog is narrower and compact");
-                    Assert(script.ClientSize.Width <= 550 && script.ClientSize.Height <= 415, "script editor is narrower and compact");
+                    Assert(script.ClientSize.Width <= 570 && script.ClientSize.Height <= 475,
+                        "aligned script editor remains compact");
                     Equal("About", about.Text, "English About title comes from INI strings");
                     Equal("CmdsManager settings", settings.Text, "English settings title comes from INI strings");
                     Assert(!AllControls(settings).OfType<ScrollableControl>().Any(control => control.AutoScroll),
@@ -450,14 +503,52 @@ namespace CmdsManager.Tests
                         "order, delay, and timeout fields share one compact row");
                     Assert(!AllControls(script).OfType<TabControl>().Any(), "launch settings are on the same page instead of a second tab");
                     var encodingLabel = AllControls(script).OfType<Label>().First(control => control.Text == text["Script.Encoding"]);
-                    Assert(encodingLabel.Parent is FlowLayoutPanel && encodingLabel.Parent.Controls.OfType<ComboBox>().Any(),
+                    var editorTable = encodingLabel.Parent as TableLayoutPanel;
+                    var encodingCombo = editorTable?.Controls.OfType<ComboBox>()
+                        .FirstOrDefault(control => editorTable.GetRow(control) == editorTable.GetRow(encodingLabel));
+                    Assert(encodingCombo != null && Math.Abs(AbsoluteTop(encodingCombo, script) - AbsoluteTop(encodingLabel, script)) <= 4,
                         "output encoding label is beside its drop-down");
-                    var author = AllControls(about).OfType<LinkLabel>().Single(control => control.Text.StartsWith("iMiKED from 4PDA", StringComparison.Ordinal));
+
+                    var alignedTextInputs = AllControls(script).OfType<TextBox>()
+                        .Where(control => !(control.Parent is NumericUpDown)).ToArray();
+                    Assert(alignedTextInputs.Select(control => AbsoluteLeft(control, script)).Distinct().Count() == 1,
+                        "script text boxes share one left edge");
+                    var alignedCombos = AllControls(script).OfType<ComboBox>().ToArray();
+                    Assert(alignedCombos.Select(control => AbsoluteLeft(control, script)).Distinct().Count() == 1,
+                        "script drop-downs share one left edge");
+                    var alignedChecks = AllControls(script).OfType<CheckBox>()
+                        .Where(control => control.Text != text["Script.Enabled"]).ToArray();
+                    Assert(alignedChecks.Select(control => AbsoluteLeft(control, script)).Distinct().Count() == 1,
+                        "script option checkboxes share one left edge");
+                    Equal(AbsoluteLeft(alignedCombos[0], script), AbsoluteLeft(numeric[0].Parent, script),
+                        "compact numeric row starts at the common control edge");
+
+                    var author = AllControls(about).OfType<LinkLabel>()
+                        .Single(control => control.Text.StartsWith("Author: iMiKED from 4PDA", StringComparison.Ordinal));
                     Equal("https://github.com/iMiKED", Convert.ToString(author.Links[0].LinkData), "hard-coded author link");
-                    Assert(AllControls(about).OfType<PictureBox>().Any(control => control.Image != null), "About contains the application icon");
+                    var aboutIcon = AllControls(about).OfType<PictureBox>().Single();
+                    Assert(aboutIcon.Image != null && aboutIcon.Image.Width == 128 && aboutIcon.Image.Height == 128,
+                        "About uses the sharp 128 by 128 application icon frame");
+                    var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "CmdsManager");
+                    var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
+                    var aboutDescription = AllControls(about).OfType<Label>().First(control => control.Text == text["About.Description"]);
+                    var aboutLefts = new Control[] { aboutTitle, aboutVersion, aboutDescription, author }
+                        .Select(control => AbsoluteLeft(control, about)).ToArray();
+                    Assert(aboutLefts.Distinct().Count() == 1, "About information lines share one left edge");
+                    Assert(aboutVersion.Top > aboutTitle.Bottom, "version is directly below the application title");
+                    var aboutGaps = new[]
+                    {
+                        aboutVersion.Top - aboutTitle.Bottom,
+                        aboutDescription.Top - aboutVersion.Bottom,
+                        author.Top - aboutDescription.Bottom
+                    };
+                    Assert(aboutGaps.Max() - aboutGaps.Min() <= 1, "About information rows have equal spacing");
+                    Assert(AllControls(about).Any(control => control.GetType().Name.Contains("FadeGradientPanel")),
+                        "About contains the fade-out gradient background");
                     Assert(typeof(MainForm).Assembly.GetManifestResourceNames().Contains("CmdsManager.Assets.CmdsManager.ico"),
                         "application icon is embedded in the executable");
-                    Assert(!configuration.Localization.Languages.Values.Any(values => values.Values.Contains("iMiKED from 4PDA")),
+                    Assert(!configuration.Localization.Languages.Values.Any(values => values.Values.Any(value =>
+                            value.IndexOf("iMiKED", StringComparison.OrdinalIgnoreCase) >= 0)),
                         "author line is not configurable through INI");
                 }
             });
@@ -467,7 +558,8 @@ namespace CmdsManager.Tests
         {
             var received = string.Empty;
             var arrived = new ManualResetEventSlim(false);
-            using (var primary = new SingleInstanceGuard())
+            var scope = "CmdsManager.Tests." + Guid.NewGuid().ToString("N");
+            using (var primary = new SingleInstanceGuard(scope))
             {
                 Assert(primary.IsPrimaryInstance, "first guard owns the instance mutex");
                 primary.StartListening(() => { }, command =>
@@ -475,7 +567,7 @@ namespace CmdsManager.Tests
                     received = command;
                     arrived.Set();
                 });
-                using (var secondary = new SingleInstanceGuard())
+                using (var secondary = new SingleInstanceGuard(scope))
                 {
                     Assert(!secondary.IsPrimaryInstance, "second guard is secondary");
                     Assert(secondary.SendCommand("RUN test"), "secondary sends a pipe command");
@@ -522,6 +614,41 @@ namespace CmdsManager.Tests
                     Assert(Math.Abs(output.Font.SizeInPoints - 12f) < 0.1f, "configured console font size is applied");
                     Assert(tabs.TabPages[0].Text.StartsWith("● ", StringComparison.Ordinal), "running console tab has a filled activity marker");
                     Assert(tabs.TabPages[0].Text.Contains(text["Console.Running"]), "running console tab has localized status text");
+                    Assert(tabs.ItemSize.Height >= 28 && tabs.Font.Name == "Segoe UI",
+                        "console tabs use the modernized taller Segoe UI presentation");
+
+                    var menu = tabs.ContextMenuStrip;
+                    Assert(menu != null && output.ContextMenuStrip == menu, "console tabs and output share the active-tab menu");
+                    var menuTexts = menu.Items.OfType<ToolStripMenuItem>().Select(item => item.Text).ToArray();
+                    Assert(menuTexts.Contains(text["Console.CopySelection"]), "console menu can copy selected text");
+                    Assert(menuTexts.Contains(text["Console.SaveSelection"]), "console menu can save selected text");
+                    Assert(menuTexts.Contains(text["Console.SaveAll"]), "console menu can save all text");
+                    Assert(menuTexts.Contains(text["Console.SelectFont"]), "console menu can choose an active-tab font");
+
+                    var windowsScriptId = Guid.NewGuid();
+                    const int windowsProcessId = 4343;
+                    const string windowsPhrase = "Файл не найден.";
+                    var windowsBytes = Encoding.GetEncoding(1251).GetBytes(windowsPhrase);
+                    console.EnqueueStarted(new ScriptInstanceEventArgs(windowsScriptId, "Windows-1251 output",
+                        windowsProcessId, DateTime.Now, true, null, ScriptOutputEncoding.Oem));
+                    console.EnqueueOutput(new ScriptOutputEventArgs(windowsScriptId, windowsProcessId,
+                        OutputEncodingDecoder.Decode(windowsBytes, ScriptOutputEncoding.Oem), false, windowsBytes));
+                    Assert(WaitWithUi(() => tabs.TabPages.Count == 2 &&
+                        tabs.SelectedTab.Controls.OfType<RichTextBox>().Single().TextLength > 0, TimeSpan.FromSeconds(2)),
+                        "raw output appears in a second console tab");
+                    var windowsOutput = tabs.SelectedTab.Controls.OfType<RichTextBox>().Single();
+                    Assert(!windowsOutput.Text.Contains(windowsPhrase), "forced OEM initially shows Windows-1251 bytes incorrectly");
+                    var encodingMenu = menu.Items.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Console.Encoding"]);
+                    encodingMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Script.Encoding.Windows1251"]).PerformClick();
+                    Equal(windowsPhrase, windowsOutput.Text.TrimEnd('\r', '\n'),
+                        "changing active-tab encoding re-decodes existing raw history");
+                    var wrapItem = menu.Items.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Console.WordWrap"]);
+                    wrapItem.PerformClick();
+                    Assert(windowsOutput.WordWrap && windowsOutput.ScrollBars == RichTextBoxScrollBars.Vertical,
+                        "active console tab can enable word wrap");
 
                     console.EnqueueExited(new ScriptInstanceEventArgs(scriptId, "Fast output", processId, DateTime.Now, true, 0));
                     elapsed.Restart();
@@ -733,27 +860,39 @@ namespace CmdsManager.Tests
                 var commandReceived = new ManualResetEventSlim(false);
                 var parentExited = new ManualResetEventSlim(false);
                 var command = string.Empty;
-                using (var primary = new SingleInstanceGuard())
+                var previousScope = Environment.GetEnvironmentVariable("CMDSMANAGER_INSTANCE_SCOPE");
+                var testScope = "CmdsManager.Tests." + Guid.NewGuid().ToString("N");
+                try
                 {
-                    Assert(primary.IsPrimaryInstance, "test process owns the CmdsManager instance guard");
-                    primary.StartListening(() => { }, value =>
+                    Environment.SetEnvironmentVariable("CMDSMANAGER_INSTANCE_SCOPE", testScope,
+                        EnvironmentVariableTarget.Process);
+                    using (var primary = new SingleInstanceGuard(testScope))
                     {
-                        command = value;
-                        commandReceived.Set();
-                    });
-                    using (var logger = new SimpleFileLogger(Path.Combine(directory, "logs"), 1))
-                    using (var supervisor = new ProcessSupervisor(
-                        new ScriptCommandBuilder(directory, typeof(MainForm).Assembly.Location), logger, () => false))
-                    {
-                        supervisor.StateChanged += (sender, args) =>
+                        Assert(primary.IsPrimaryInstance, "test process owns an isolated CmdsManager instance guard");
+                        primary.StartListening(() => { }, value =>
                         {
-                            if (args.Snapshot.ScriptId == parent.Id && args.Snapshot.State == ScriptRuntimeState.Exited)
-                                parentExited.Set();
-                        };
-                        supervisor.Start(parent, string.Empty);
-                        Assert(commandReceived.Wait(TimeSpan.FromSeconds(8)), "transformed START invokes the primary command pipe");
-                        Assert(parentExited.Wait(TimeSpan.FromSeconds(8)), "parent script waits for the IPC helper and exits");
+                            command = value;
+                            commandReceived.Set();
+                        });
+                        using (var logger = new SimpleFileLogger(Path.Combine(directory, "logs"), 1))
+                        using (var supervisor = new ProcessSupervisor(
+                            new ScriptCommandBuilder(directory, typeof(MainForm).Assembly.Location), logger, () => false))
+                        {
+                            supervisor.StateChanged += (sender, args) =>
+                            {
+                                if (args.Snapshot.ScriptId == parent.Id && args.Snapshot.State == ScriptRuntimeState.Exited)
+                                    parentExited.Set();
+                            };
+                            supervisor.Start(parent, string.Empty);
+                            Assert(commandReceived.Wait(TimeSpan.FromSeconds(8)), "transformed START invokes the primary command pipe");
+                            Assert(parentExited.Wait(TimeSpan.FromSeconds(8)), "parent script waits for the IPC helper and exits");
+                        }
                     }
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable("CMDSMANAGER_INSTANCE_SCOPE", previousScope,
+                        EnvironmentVariableTarget.Process);
                 }
 
                 Assert(command.StartsWith("START ", StringComparison.Ordinal), "managed START uses a dedicated IPC command");
@@ -926,6 +1065,28 @@ namespace CmdsManager.Tests
             yield return root;
             foreach (Control child in root.Controls)
                 foreach (var descendant in AllControls(child)) yield return descendant;
+        }
+
+        private static int AbsoluteLeft(Control control, Control ancestor)
+        {
+            var result = 0;
+            while (control != null && control != ancestor)
+            {
+                result += control.Left;
+                control = control.Parent;
+            }
+            return result;
+        }
+
+        private static int AbsoluteTop(Control control, Control ancestor)
+        {
+            var result = 0;
+            while (control != null && control != ancestor)
+            {
+                result += control.Top;
+                control = control.Parent;
+            }
+            return result;
         }
 
         private static bool WaitWithUi(Func<bool> condition, TimeSpan timeout)

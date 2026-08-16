@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 3;
+        private const int CurrentVersion = 4;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -480,12 +480,25 @@ namespace CmdsManager.Infrastructure.Configuration
 
         private static void UpgradeConfiguration(AppConfiguration configuration, int loadedVersion)
         {
-            if (loadedVersion >= 3 || configuration.Localization?.Languages == null) return;
-
-            ReplaceUnmodifiedString(configuration.Localization, "ru", "Script.Encoding.Auto",
-                "Авто (OEM Windows)", "Авто (UTF-8/OEM Windows)");
-            ReplaceUnmodifiedString(configuration.Localization, "en", "Script.Encoding.Auto",
-                "Auto (Windows OEM)", "Auto (UTF-8/Windows OEM)");
+            if (configuration.Localization?.Languages == null) return;
+            if (loadedVersion < 3)
+            {
+                ReplaceUnmodifiedString(configuration.Localization, "ru", "Script.Encoding.Auto",
+                    "Авто (OEM Windows)", "Авто (UTF-8/OEM Windows)");
+                ReplaceUnmodifiedString(configuration.Localization, "en", "Script.Encoding.Auto",
+                    "Auto (Windows OEM)", "Auto (UTF-8/Windows OEM)");
+            }
+            if (loadedVersion < 4)
+            {
+                ReplaceUnmodifiedString(configuration.Localization, "ru", "Script.Encoding.Auto",
+                    "Авто (UTF-8/OEM Windows)", "Авто (UTF-8/Windows-1251/OEM)");
+                ReplaceUnmodifiedString(configuration.Localization, "en", "Script.Encoding.Auto",
+                    "Auto (UTF-8/Windows OEM)", "Auto (UTF-8/Windows-1251/OEM)");
+                ReplaceUnmodifiedString(configuration.Localization, "ru", "Script.AutoStartOrder",
+                    "Порядок автозапуска", "Порядок");
+                ReplaceUnmodifiedString(configuration.Localization, "en", "Script.AutoStartOrder",
+                    "Auto-start order", "Order");
+            }
         }
 
         private static void ReplaceUnmodifiedString(LocalizationSettings localization, string language, string key,

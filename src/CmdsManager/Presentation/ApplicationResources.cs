@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 
 namespace CmdsManager.Presentation
@@ -11,13 +12,31 @@ namespace CmdsManager.Presentation
 
         internal static Icon Icon => IconHolder.Value;
 
+        internal static Bitmap CreateIconBitmap(int size)
+        {
+            if (size <= 0) throw new ArgumentOutOfRangeException(nameof(size));
+            using (var stream = OpenIconStream())
+            {
+                if (stream == null)
+                {
+                    using (var fallback = new Icon(SystemIcons.Application, size, size)) return fallback.ToBitmap();
+                }
+                using (var icon = new Icon(stream, new Size(size, size))) return icon.ToBitmap();
+            }
+        }
+
         private static Icon LoadIcon()
         {
-            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(IconResourceName))
+            using (var stream = OpenIconStream())
             {
                 if (stream == null) return SystemIcons.Application;
                 using (var icon = new Icon(stream)) return (Icon)icon.Clone();
             }
+        }
+
+        private static Stream OpenIconStream()
+        {
+            return Assembly.GetExecutingAssembly().GetManifestResourceStream(IconResourceName);
         }
     }
 }

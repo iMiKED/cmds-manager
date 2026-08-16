@@ -84,7 +84,7 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 3;
+        public int ConfigVersion { get; set; } = 4;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
         public bool StartWithWindows { get; set; }

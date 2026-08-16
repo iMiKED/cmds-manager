@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
+using CmdsManager.Infrastructure.Execution;
 
 namespace CmdsManager.Presentation.Controls
 {
@@ -30,6 +35,13 @@ namespace CmdsManager.Presentation.Controls
             internal ScriptOutputEventArgs Output { get; set; }
         }
 
+        private sealed class ConsoleHistoryLine
+        {
+            internal byte[] RawBytes { get; set; }
+            internal string OriginalText { get; set; }
+            internal bool IsError { get; set; }
+        }
+
         private sealed class ConsoleSession
         {
             internal Guid ScriptId { get; set; }
@@ -37,6 +49,11 @@ namespace CmdsManager.Presentation.Controls
             internal int ProcessId { get; set; }
             internal int? ExitCode { get; set; }
             internal DateTime StartedAt { get; set; }
+            internal ScriptOutputEncoding OutputEncoding { get; set; }
+            internal Queue<ConsoleHistoryLine> History { get; } = new Queue<ConsoleHistoryLine>();
+            internal int HistoryUnits { get; set; }
+            internal bool WordWrap { get; set; }
+            internal Font CustomFont { get; set; }
             internal TabPage Page { get; set; }
             internal RichTextBox Output { get; set; }
         }
@@ -56,9 +73,20 @@ namespace CmdsManager.Presentation.Controls
         };
         private readonly Timer _flushTimer = new Timer { Interval = 50 };
         private readonly ContextMenuStrip _menu = new ContextMenuStrip();
+        private readonly ToolStripMenuItem _copyItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _saveSelectionItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _saveAllItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _fontItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _encodingItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _wordWrapItem = new ToolStripMenuItem { CheckOnClick = false };
         private readonly ToolStripMenuItem _clearItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _closeItem = new ToolStripMenuItem();
+        private readonly Dictionary<ScriptOutputEncoding, ToolStripMenuItem> _encodingItems =
+            new Dictionary<ScriptOutputEncoding, ToolStripMenuItem>();
+        private readonly Font _tabFont = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
         private Font _consoleFont;
+        private int _hotTabIndex = -1;
+        private int _hotCloseIndex = -1;
 
         public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings)
         {
@@ -66,23 +94,42 @@ namespace CmdsManager.Presentation.Controls
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
             BackColor = Color.FromArgb(28, 28, 28);
-            _menu.Items.AddRange(new ToolStripItem[] { _clearItem, _closeItem });
-            _menu.Opening += (sender, args) =>
+            AddEncodingItem(ScriptOutputEncoding.Auto);
+            AddEncodingItem(ScriptOutputEncoding.Utf8);
+            AddEncodingItem(ScriptOutputEncoding.Windows1251);
+            AddEncodingItem(ScriptOutputEncoding.Oem);
+            AddEncodingItem(ScriptOutputEncoding.Utf16LittleEndian);
+            _menu.Items.AddRange(new ToolStripItem[]
             {
-                var session = SelectedSession;
-                _clearItem.Enabled = session != null && session.Output.TextLength > 0;
-                _closeItem.Enabled = session != null;
-                _closeItem.Text = session != null && !session.ExitCode.HasValue
-                    ? _text["Console.CloseAndStop"]
-                    : _text["Console.CloseTab"];
-            };
-            _clearItem.Click += (sender, args) => SelectedSession?.Output.Clear();
+                _copyItem,
+                _saveSelectionItem,
+                _saveAllItem,
+                new ToolStripSeparator(),
+                _fontItem,
+                _encodingItem,
+                _wordWrapItem,
+                new ToolStripSeparator(),
+                _clearItem,
+                _closeItem
+            });
+            _menu.Opening += PrepareContextMenu;
+            _copyItem.Click += (sender, args) => CopySelection();
+            _saveSelectionItem.Click += (sender, args) => SaveConsoleText(true);
+            _saveAllItem.Click += (sender, args) => SaveConsoleText(false);
+            _fontItem.Click += (sender, args) => ChooseFont();
+            _wordWrapItem.Click += (sender, args) => ToggleWordWrap();
+            _clearItem.Click += (sender, args) => ClearSelectedTab();
             _closeItem.Click += (sender, args) => CloseSelectedTab();
+
             _tabs.ContextMenuStrip = _menu;
             _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
-            _tabs.Padding = new Point(15, 4);
+            _tabs.Padding = new Point(18, 5);
+            _tabs.ItemSize = new Size(0, 30);
+            _tabs.Font = _tabFont;
             _tabs.DrawItem += DrawTab;
             _tabs.MouseDown += HandleTabMouseDown;
+            _tabs.MouseMove += HandleTabMouseMove;
+            _tabs.MouseLeave += (sender, args) => SetHotTab(-1, -1);
 
             Controls.Add(_tabs);
             Controls.Add(_empty);
@@ -101,25 +148,18 @@ namespace CmdsManager.Presentation.Controls
         public void EnqueueStarted(ScriptInstanceEventArgs args)
         {
             if (args != null && args.CapturesOutput)
-            {
                 _events.Enqueue(new ConsoleEvent { Kind = ConsoleEventKind.Started, Instance = args });
-            }
         }
 
         public void EnqueueOutput(ScriptOutputEventArgs args)
         {
-            if (args != null)
-            {
-                _events.Enqueue(new ConsoleEvent { Kind = ConsoleEventKind.Output, Output = args });
-            }
+            if (args != null) _events.Enqueue(new ConsoleEvent { Kind = ConsoleEventKind.Output, Output = args });
         }
 
         public void EnqueueExited(ScriptInstanceEventArgs args)
         {
             if (args != null && args.CapturesOutput)
-            {
                 _events.Enqueue(new ConsoleEvent { Kind = ConsoleEventKind.Exited, Instance = args });
-            }
         }
 
         public void ApplySettings()
@@ -134,17 +174,16 @@ namespace CmdsManager.Presentation.Controls
             Font replacement;
             try
             {
-                replacement = new Font(settings.ConsoleFontName, settings.ConsoleFontSize, FontStyle.Regular, GraphicsUnit.Point);
+                replacement = new Font(settings.ConsoleFontName, settings.ConsoleFontSize,
+                    FontStyle.Regular, GraphicsUnit.Point);
             }
             catch (ArgumentException)
             {
                 replacement = new Font(FontFamily.GenericMonospace, 10f, FontStyle.Regular, GraphicsUnit.Point);
             }
 
-            foreach (var session in _sessions.Values)
-            {
+            foreach (var session in _sessions.Values.Where(item => item.CustomFont == null))
                 session.Output.Font = replacement;
-            }
 
             var previous = _consoleFont;
             _consoleFont = replacement;
@@ -174,8 +213,10 @@ namespace CmdsManager.Presentation.Controls
                 _text.Changed -= HandleLocalizationChanged;
                 _flushTimer.Stop();
                 _flushTimer.Dispose();
+                foreach (var session in _sessions.Values) session.CustomFont?.Dispose();
                 _menu.Dispose();
                 _consoleFont?.Dispose();
+                _tabFont.Dispose();
             }
 
             base.Dispose(disposing);
@@ -183,12 +224,10 @@ namespace CmdsManager.Presentation.Controls
 
         private void FlushPendingOutput()
         {
-            if (IsDisposed)
-            {
-                return;
-            }
+            if (IsDisposed) return;
 
             var batches = new Dictionary<int, StringBuilder>();
+            var redraw = new HashSet<int>();
             var processed = 0;
             ConsoleEvent item;
             while (processed < MaxEventsPerTick && _events.TryDequeue(out item))
@@ -197,7 +236,8 @@ namespace CmdsManager.Presentation.Controls
                 if (item.Kind == ConsoleEventKind.Started)
                 {
                     _suppressedProcesses.Remove(item.Instance.ProcessId);
-                    var started = EnsureSession(item.Instance.ProcessId, item.Instance.ScriptId, item.Instance.ScriptName, item.Instance.StartedAt);
+                    var started = EnsureSession(item.Instance.ProcessId, item.Instance.ScriptId,
+                        item.Instance.ScriptName, item.Instance.StartedAt, item.Instance.OutputEncoding);
                     _tabs.SelectedTab = started.Page;
                     continue;
                 }
@@ -210,41 +250,49 @@ namespace CmdsManager.Presentation.Controls
                         exited.ExitCode = item.Instance.ExitCode;
                         UpdateTabTitle(exited);
                     }
-
                     continue;
                 }
 
-                if (_suppressedProcesses.Contains(item.Output.ProcessId))
+                if (_suppressedProcesses.Contains(item.Output.ProcessId)) continue;
+                var session = EnsureSession(item.Output.ProcessId, item.Output.ScriptId,
+                    string.Empty, null, ScriptOutputEncoding.Auto);
+                var historyLine = new ConsoleHistoryLine
                 {
-                    continue;
-                }
+                    RawBytes = item.Output.RawBytes,
+                    OriginalText = item.Output.Line,
+                    IsError = item.Output.IsError
+                };
+                session.History.Enqueue(historyLine);
+                session.HistoryUnits += HistoryUnits(historyLine);
+                if (TrimHistory(session)) redraw.Add(session.ProcessId);
 
-                var session = EnsureSession(item.Output.ProcessId, item.Output.ScriptId, string.Empty, null);
+                if (redraw.Contains(session.ProcessId)) continue;
                 StringBuilder builder;
                 if (!batches.TryGetValue(item.Output.ProcessId, out builder))
                 {
                     builder = new StringBuilder();
                     batches[item.Output.ProcessId] = builder;
                 }
-
-                builder.AppendLine(item.Output.Line);
+                builder.AppendLine(DecodeLine(session, historyLine));
             }
 
-            foreach (var batch in batches)
+            foreach (var processId in redraw)
             {
                 ConsoleSession session;
-                if (!_sessions.TryGetValue(batch.Key, out session))
-                {
-                    continue;
-                }
-
-                AppendBatch(session.Output, batch.Value.ToString());
+                if (_sessions.TryGetValue(processId, out session)) RenderSession(session);
+            }
+            foreach (var batch in batches)
+            {
+                if (redraw.Contains(batch.Key)) continue;
+                ConsoleSession session;
+                if (_sessions.TryGetValue(batch.Key, out session)) AppendBatch(session.Output, batch.Value.ToString());
             }
 
             UpdateEmptyState();
         }
 
-        private ConsoleSession EnsureSession(int processId, Guid scriptId, string scriptName, DateTime? startedAt)
+        private ConsoleSession EnsureSession(int processId, Guid scriptId, string scriptName,
+            DateTime? startedAt, ScriptOutputEncoding outputEncoding)
         {
             ConsoleSession existing;
             if (_sessions.TryGetValue(processId, out existing))
@@ -252,10 +300,11 @@ namespace CmdsManager.Presentation.Controls
                 if (!string.IsNullOrWhiteSpace(scriptName))
                 {
                     existing.ScriptName = scriptName;
+                    existing.OutputEncoding = outputEncoding;
                     if (startedAt.HasValue) existing.StartedAt = startedAt.Value;
                     UpdateTabTitle(existing);
+                    if (existing.History.Count > 0) RenderSession(existing);
                 }
-
                 return existing;
             }
 
@@ -270,9 +319,10 @@ namespace CmdsManager.Presentation.Controls
                 DetectUrls = true,
                 HideSelection = false,
                 ScrollBars = RichTextBoxScrollBars.Both,
-                Font = _consoleFont ?? new Font(FontFamily.GenericMonospace, 10f)
+                Font = _consoleFont ?? new Font(FontFamily.GenericMonospace, 10f),
+                ContextMenuStrip = _menu
             };
-            var page = new TabPage { BackColor = output.BackColor, Padding = new Padding(2) };
+            var page = new TabPage { BackColor = output.BackColor, Padding = new Padding(3) };
             page.Controls.Add(output);
             var session = new ConsoleSession
             {
@@ -280,6 +330,7 @@ namespace CmdsManager.Presentation.Controls
                 ScriptName = string.IsNullOrWhiteSpace(scriptName) ? "PID " + processId : scriptName,
                 ProcessId = processId,
                 StartedAt = startedAt ?? DateTime.Now,
+                OutputEncoding = outputEncoding,
                 Page = page,
                 Output = output
             };
@@ -289,25 +340,47 @@ namespace CmdsManager.Presentation.Controls
             return session;
         }
 
+        private static int HistoryUnits(ConsoleHistoryLine line)
+        {
+            return (line.RawBytes == null ? (line.OriginalText ?? string.Empty).Length : line.RawBytes.Length) + 2;
+        }
+
+        private static bool TrimHistory(ConsoleSession session)
+        {
+            if (session.HistoryUnits <= MaxCharactersPerTab) return false;
+            while (session.History.Count > 1 && session.HistoryUnits > TrimToCharacters)
+            {
+                var removed = session.History.Dequeue();
+                session.HistoryUnits -= HistoryUnits(removed);
+            }
+            return true;
+        }
+
+        private static string DecodeLine(ConsoleSession session, ConsoleHistoryLine line)
+        {
+            return line.RawBytes == null
+                ? line.OriginalText ?? string.Empty
+                : OutputEncodingDecoder.Decode(line.RawBytes, session.OutputEncoding);
+        }
+
+        private static void RenderSession(ConsoleSession session)
+        {
+            var builder = new StringBuilder(Math.Min(MaxCharactersPerTab, session.HistoryUnits));
+            foreach (var line in session.History) builder.AppendLine(DecodeLine(session, line));
+            var text = builder.ToString();
+            if (text.Length > MaxCharactersPerTab)
+                text = text.Substring(text.Length - TrimToCharacters);
+            session.Output.Text = text;
+            session.Output.SelectionStart = session.Output.TextLength;
+            session.Output.SelectionLength = 0;
+            session.Output.ScrollToCaret();
+        }
+
         private static void AppendBatch(RichTextBox output, string text)
         {
-            if (text.Length == 0)
-            {
-                return;
-            }
-
+            if (text.Length == 0) return;
             var wasAtEnd = output.SelectionStart >= output.TextLength - 1;
             output.AppendText(text);
-            if (output.TextLength > MaxCharactersPerTab)
-            {
-                var remove = output.TextLength - TrimToCharacters;
-                output.ReadOnly = false;
-                output.Select(0, remove);
-                output.SelectedText = string.Empty;
-                output.ReadOnly = true;
-                wasAtEnd = true;
-            }
-
             if (wasAtEnd)
             {
                 output.SelectionStart = output.TextLength;
@@ -316,15 +389,133 @@ namespace CmdsManager.Presentation.Controls
             }
         }
 
-        private void CloseSelectedTab()
+        private void AddEncodingItem(ScriptOutputEncoding encoding)
+        {
+            var item = new ToolStripMenuItem { Tag = encoding, CheckOnClick = false };
+            item.Click += ChooseEncoding;
+            _encodingItems.Add(encoding, item);
+            _encodingItem.DropDownItems.Add(item);
+        }
+
+        private void PrepareContextMenu(object sender, CancelEventArgs args)
         {
             var session = SelectedSession;
             if (session == null)
             {
+                args.Cancel = true;
                 return;
             }
 
-            CloseSession(session);
+            _copyItem.Enabled = session.Output.SelectionLength > 0;
+            _saveSelectionItem.Enabled = session.Output.SelectionLength > 0;
+            _saveAllItem.Enabled = session.Output.TextLength > 0;
+            _clearItem.Enabled = session.Output.TextLength > 0;
+            _wordWrapItem.Checked = session.WordWrap;
+            foreach (var pair in _encodingItems) pair.Value.Checked = pair.Key == session.OutputEncoding;
+            _closeItem.Text = session.ExitCode.HasValue ? _text["Console.CloseTab"] : _text["Console.CloseAndStop"];
+        }
+
+        private void CopySelection()
+        {
+            var session = SelectedSession;
+            if (session == null || session.Output.SelectionLength == 0) return;
+            try { session.Output.Copy(); }
+            catch (ExternalException exception)
+            {
+                MessageBox.Show(this, exception.Message, _text["Console.CopyFailed"],
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void SaveConsoleText(bool selectionOnly)
+        {
+            var session = SelectedSession;
+            if (session == null) return;
+            var content = selectionOnly ? session.Output.SelectedText : session.Output.Text;
+            if (string.IsNullOrEmpty(content)) return;
+
+            using (var dialog = new SaveFileDialog
+            {
+                AddExtension = true,
+                DefaultExt = "txt",
+                Filter = _text["Console.TextFileFilter"],
+                FileName = SafeFileName(session.ScriptName) +
+                    (selectionOnly ? "-selection-" : "-console-") + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt",
+                OverwritePrompt = true,
+                RestoreDirectory = true,
+                Title = _text[selectionOnly ? "Console.SaveSelectionTitle" : "Console.SaveAllTitle"]
+            })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                try { File.WriteAllText(dialog.FileName, content, new UTF8Encoding(true)); }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(this, exception.Message, _text["Console.SaveFailed"],
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private static string SafeFileName(string value)
+        {
+            var result = string.IsNullOrWhiteSpace(value) ? "console" : value.Trim();
+            foreach (var character in Path.GetInvalidFileNameChars()) result = result.Replace(character, '_');
+            return result.Length > 60 ? result.Substring(0, 60) : result;
+        }
+
+        private void ChooseFont()
+        {
+            var session = SelectedSession;
+            if (session == null) return;
+            using (var dialog = new FontDialog
+            {
+                Font = session.Output.Font,
+                FixedPitchOnly = false,
+                ShowEffects = true,
+                MinSize = 6,
+                MaxSize = 48
+            })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                var replacement = (Font)dialog.Font.Clone();
+                var previous = session.CustomFont;
+                session.CustomFont = replacement;
+                session.Output.Font = replacement;
+                previous?.Dispose();
+            }
+        }
+
+        private void ChooseEncoding(object sender, EventArgs args)
+        {
+            var session = SelectedSession;
+            var item = sender as ToolStripMenuItem;
+            if (session == null || item == null || !(item.Tag is ScriptOutputEncoding)) return;
+            session.OutputEncoding = (ScriptOutputEncoding)item.Tag;
+            RenderSession(session);
+        }
+
+        private void ToggleWordWrap()
+        {
+            var session = SelectedSession;
+            if (session == null) return;
+            session.WordWrap = !session.WordWrap;
+            session.Output.WordWrap = session.WordWrap;
+            session.Output.ScrollBars = session.WordWrap ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
+        }
+
+        private void ClearSelectedTab()
+        {
+            var session = SelectedSession;
+            if (session == null) return;
+            session.History.Clear();
+            session.HistoryUnits = 0;
+            session.Output.Clear();
+        }
+
+        private void CloseSelectedTab()
+        {
+            var session = SelectedSession;
+            if (session != null) CloseSession(session);
         }
 
         private void CloseSession(ConsoleSession session)
@@ -334,45 +525,118 @@ namespace CmdsManager.Presentation.Controls
             _sessions.Remove(session.ProcessId);
             _tabs.TabPages.Remove(session.Page);
             session.Page.Dispose();
+            session.CustomFont?.Dispose();
             UpdateEmptyState();
-            CloseRequested?.Invoke(this, new ConsoleTabCloseRequestedEventArgs(session.ScriptId, session.ProcessId, isRunning));
+            CloseRequested?.Invoke(this,
+                new ConsoleTabCloseRequestedEventArgs(session.ScriptId, session.ProcessId, isRunning));
         }
 
         private void DrawTab(object sender, DrawItemEventArgs args)
         {
             if (args.Index < 0 || args.Index >= _tabs.TabPages.Count) return;
-            var bounds = _tabs.GetTabRect(args.Index);
+            var tabBounds = _tabs.GetTabRect(args.Index);
+            var bounds = Rectangle.Inflate(tabBounds, -2, -2);
             var selected = args.Index == _tabs.SelectedIndex;
-            using (var background = new SolidBrush(selected ? SystemColors.Window : SystemColors.Control))
-                args.Graphics.FillRectangle(background, bounds);
+            var hot = args.Index == _hotTabIndex;
+            var background = selected
+                ? Color.FromArgb(250, 252, 255)
+                : hot ? Color.FromArgb(231, 237, 245) : Color.FromArgb(240, 243, 247);
+            var border = selected ? Color.FromArgb(94, 137, 190) : Color.FromArgb(205, 211, 219);
 
-            var closeBounds = CloseBounds(bounds);
-            var textBounds = new Rectangle(bounds.Left + 7, bounds.Top + 2,
-                Math.Max(0, closeBounds.Left - bounds.Left - 9), bounds.Height - 4);
-            TextRenderer.DrawText(args.Graphics, _tabs.TabPages[args.Index].Text, _tabs.Font, textBounds,
-                SystemColors.ControlText, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+            var previousSmoothing = args.Graphics.SmoothingMode;
+            args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = RoundedRectangle(bounds, 6))
+            using (var brush = new SolidBrush(background))
+            using (var pen = new Pen(border))
+            {
+                args.Graphics.FillPath(brush, path);
+                args.Graphics.DrawPath(pen, path);
+            }
+            if (selected)
+            {
+                using (var accent = new SolidBrush(Color.FromArgb(45, 118, 196)))
+                    args.Graphics.FillRectangle(accent, bounds.Left + 6, bounds.Bottom - 3, bounds.Width - 12, 3);
+            }
+
+            var pageText = _tabs.TabPages[args.Index].Text ?? string.Empty;
+            var running = pageText.StartsWith("● ", StringComparison.Ordinal);
+            var displayText = pageText.Length > 2 && (running || pageText.StartsWith("○ ", StringComparison.Ordinal))
+                ? pageText.Substring(2)
+                : pageText;
+            using (var status = new SolidBrush(running ? Color.FromArgb(35, 166, 90) : Color.FromArgb(125, 135, 145)))
+                args.Graphics.FillEllipse(status, bounds.Left + 9, bounds.Top + (bounds.Height - 8) / 2, 8, 8);
+
+            var closeBounds = CloseBounds(tabBounds);
+            if (args.Index == _hotCloseIndex)
+            {
+                using (var closeBackground = new SolidBrush(Color.FromArgb(255, 225, 225)))
+                    args.Graphics.FillEllipse(closeBackground, closeBounds);
+            }
+            using (var closePen = new Pen(args.Index == _hotCloseIndex ? Color.Firebrick : Color.FromArgb(105, 110, 118), 1.5f))
+            {
+                args.Graphics.DrawLine(closePen, closeBounds.Left + 5, closeBounds.Top + 5,
+                    closeBounds.Right - 5, closeBounds.Bottom - 5);
+                args.Graphics.DrawLine(closePen, closeBounds.Right - 5, closeBounds.Top + 5,
+                    closeBounds.Left + 5, closeBounds.Bottom - 5);
+            }
+            args.Graphics.SmoothingMode = previousSmoothing;
+
+            var textBounds = new Rectangle(bounds.Left + 22, bounds.Top + 1,
+                Math.Max(0, closeBounds.Left - bounds.Left - 25), bounds.Height - 3);
+            TextRenderer.DrawText(args.Graphics, displayText, _tabFont, textBounds,
+                Color.FromArgb(42, 48, 56), TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(args.Graphics, "×", _tabs.Font, closeBounds, Color.Firebrick,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-            if (selected) ControlPaint.DrawBorder(args.Graphics, bounds, SystemColors.ControlDark, ButtonBorderStyle.Solid);
         }
 
         private void HandleTabMouseDown(object sender, MouseEventArgs args)
         {
-            if (args.Button != MouseButtons.Left) return;
-            for (var index = 0; index < _tabs.TabPages.Count; index++)
+            var index = TabIndexAt(args.Location);
+            if (index < 0) return;
+            _tabs.SelectedIndex = index;
+            if (args.Button == MouseButtons.Left && CloseBounds(_tabs.GetTabRect(index)).Contains(args.Location))
             {
-                if (!CloseBounds(_tabs.GetTabRect(index)).Contains(args.Location)) continue;
-                _tabs.SelectedIndex = index;
                 var session = SelectedSession;
                 if (session != null) CloseSession(session);
-                return;
             }
+        }
+
+        private void HandleTabMouseMove(object sender, MouseEventArgs args)
+        {
+            var index = TabIndexAt(args.Location);
+            var closeIndex = index >= 0 && CloseBounds(_tabs.GetTabRect(index)).Contains(args.Location) ? index : -1;
+            SetHotTab(index, closeIndex);
+        }
+
+        private int TabIndexAt(Point location)
+        {
+            for (var index = 0; index < _tabs.TabPages.Count; index++)
+                if (_tabs.GetTabRect(index).Contains(location)) return index;
+            return -1;
+        }
+
+        private void SetHotTab(int tabIndex, int closeIndex)
+        {
+            if (_hotTabIndex == tabIndex && _hotCloseIndex == closeIndex) return;
+            _hotTabIndex = tabIndex;
+            _hotCloseIndex = closeIndex;
+            _tabs.Invalidate();
         }
 
         private static Rectangle CloseBounds(Rectangle tabBounds)
         {
-            return new Rectangle(tabBounds.Right - 19, tabBounds.Top + Math.Max(1, (tabBounds.Height - 16) / 2), 16, 16);
+            return new Rectangle(tabBounds.Right - 22, tabBounds.Top + Math.Max(2, (tabBounds.Height - 18) / 2), 18, 18);
+        }
+
+        private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
+        {
+            var diameter = radius * 2;
+            var path = new GraphicsPath();
+            path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+            path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+            path.CloseFigure();
+            return path;
         }
 
         private ConsoleSession SelectedSession
@@ -380,59 +644,40 @@ namespace CmdsManager.Presentation.Controls
             get
             {
                 var page = _tabs.SelectedTab;
-                if (page == null)
-                {
-                    return null;
-                }
-
-                foreach (var session in _sessions.Values)
-                {
-                    if (session.Page == page)
-                    {
-                        return session;
-                    }
-                }
-
-                return null;
+                return page == null ? null : _sessions.Values.FirstOrDefault(item => item.Page == page);
             }
         }
 
         private void HandleLocalizationChanged(object sender, EventArgs args)
         {
-            if (IsDisposed)
-            {
-                return;
-            }
-
-            if (InvokeRequired)
-            {
-                BeginInvoke((Action)ApplyLocalization);
-            }
-            else
-            {
-                ApplyLocalization();
-            }
+            if (IsDisposed) return;
+            if (InvokeRequired) BeginInvoke((Action)ApplyLocalization);
+            else ApplyLocalization();
         }
 
         private void ApplyLocalization()
         {
             _empty.Text = _text["Console.Empty"];
+            _copyItem.Text = _text["Console.CopySelection"];
+            _saveSelectionItem.Text = _text["Console.SaveSelection"];
+            _saveAllItem.Text = _text["Console.SaveAll"];
+            _fontItem.Text = _text["Console.SelectFont"];
+            _encodingItem.Text = _text["Console.Encoding"];
+            _wordWrapItem.Text = _text["Console.WordWrap"];
             _clearItem.Text = _text["Console.Clear"];
             _closeItem.Text = _text["Console.CloseTab"];
-            foreach (var session in _sessions.Values)
-            {
-                UpdateTabTitle(session);
-            }
+            _encodingItems[ScriptOutputEncoding.Auto].Text = _text["Script.Encoding.Auto"];
+            _encodingItems[ScriptOutputEncoding.Utf8].Text = _text["Script.Encoding.Utf8"];
+            _encodingItems[ScriptOutputEncoding.Windows1251].Text = _text["Script.Encoding.Windows1251"];
+            _encodingItems[ScriptOutputEncoding.Oem].Text = _text["Script.Encoding.Oem"];
+            _encodingItems[ScriptOutputEncoding.Utf16LittleEndian].Text = _text["Script.Encoding.Utf16"];
+            foreach (var session in _sessions.Values) UpdateTabTitle(session);
         }
 
         private void UpdateTabTitle(ConsoleSession session)
         {
             var name = session.ScriptName ?? string.Empty;
-            if (name.Length > 28)
-            {
-                name = name.Substring(0, 27) + "…";
-            }
-
+            if (name.Length > 28) name = name.Substring(0, 27) + "…";
             var status = session.ExitCode.HasValue
                 ? _text.Get("Console.Exited", session.ExitCode.Value)
                 : _text["Console.Running"];
@@ -440,15 +685,13 @@ namespace CmdsManager.Presentation.Controls
                 name + " [" + session.ProcessId + "] · " + status;
             session.Page.ToolTipText = (session.ScriptName ?? string.Empty) +
                 " [" + session.ProcessId + "] · " + status;
+            _tabs.Invalidate();
         }
 
         private void UpdateEmptyState()
         {
             _empty.Visible = _tabs.TabPages.Count == 0;
-            if (_empty.Visible)
-            {
-                _empty.BringToFront();
-            }
+            if (_empty.Visible) _empty.BringToFront();
         }
     }
 }

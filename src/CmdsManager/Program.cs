@@ -44,7 +44,7 @@ namespace CmdsManager
                 return;
             }
 
-            using (var instance = new SingleInstanceGuard())
+            using (var instance = new SingleInstanceGuard(Environment.GetEnvironmentVariable("CMDSMANAGER_INSTANCE_SCOPE")))
             {
                 if (!instance.IsPrimaryInstance)
                 {

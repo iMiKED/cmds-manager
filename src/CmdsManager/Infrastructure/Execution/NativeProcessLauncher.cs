@@ -15,8 +15,8 @@ namespace CmdsManager.Infrastructure.Execution
 
         internal IntPtr ProcessHandle { get; set; }
         internal IntPtr JobHandle { get; set; }
-        internal TextReader StandardOutput { get; set; }
-        internal TextReader StandardError { get; set; }
+        internal AdaptiveEncodingTextReader StandardOutput { get; set; }
+        internal AdaptiveEncodingTextReader StandardError { get; set; }
         internal int ProcessId { get; set; }
         internal string TemporaryScriptPath { get; set; }
 
@@ -257,37 +257,12 @@ namespace CmdsManager.Infrastructure.Execution
             return handle;
         }
 
-        private static TextReader CreateReader(ref IntPtr handle, ScriptOutputEncoding outputEncoding)
+        private static AdaptiveEncodingTextReader CreateReader(ref IntPtr handle, ScriptOutputEncoding outputEncoding)
         {
             var safeHandle = new SafeFileHandle(handle, true);
             handle = IntPtr.Zero;
             var stream = new FileStream(safeHandle, FileAccess.Read, 4096, false);
-            if (outputEncoding == ScriptOutputEncoding.Auto)
-                return new AdaptiveEncodingTextReader(stream, GetOemEncoding());
-
-            var encoding = GetOutputEncoding(outputEncoding);
-            return new StreamReader(stream, encoding, true, 4096);
-        }
-
-        private static Encoding GetOutputEncoding(ScriptOutputEncoding outputEncoding)
-        {
-            switch (outputEncoding)
-            {
-                case ScriptOutputEncoding.Utf8:
-                    return new UTF8Encoding(false, false);
-                case ScriptOutputEncoding.Windows1251:
-                    return Encoding.GetEncoding(1251);
-                case ScriptOutputEncoding.Utf16LittleEndian:
-                    return Encoding.Unicode;
-            }
-
-            return GetOemEncoding();
-        }
-
-        private static Encoding GetOemEncoding()
-        {
-            try { return Encoding.GetEncoding((int)NativeMethods.GetOEMCP()); }
-            catch (ArgumentException) { return Encoding.Default; }
+            return new AdaptiveEncodingTextReader(stream, outputEncoding);
         }
 
         private static short ToShowWindow(ScriptWindowMode mode)

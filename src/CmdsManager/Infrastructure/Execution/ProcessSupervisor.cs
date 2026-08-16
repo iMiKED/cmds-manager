@@ -103,7 +103,8 @@ namespace CmdsManager.Infrastructure.Execution
                     list.Add(session);
                 }
 
-                InstanceStarted?.Invoke(this, new ScriptInstanceEventArgs(script.Id, script.Name, native.ProcessId, session.StartedAt, spec.CaptureOutput, null));
+                InstanceStarted?.Invoke(this, new ScriptInstanceEventArgs(script.Id, script.Name, native.ProcessId,
+                    session.StartedAt, spec.CaptureOutput, null, spec.OutputEncoding));
                 session.OutputTask = StartReader(session, native.StandardOutput, false);
                 session.ErrorTask = StartReader(session, native.StandardError, true);
                 Task.Factory.StartNew(
@@ -247,7 +248,7 @@ namespace CmdsManager.Infrastructure.Execution
             }
         }
 
-        private Task StartReader(RunningProcess session, TextReader reader, bool isError)
+        private Task StartReader(RunningProcess session, AdaptiveEncodingTextReader reader, bool isError)
         {
             if (reader == null)
             {
@@ -258,13 +259,15 @@ namespace CmdsManager.Infrastructure.Execution
             {
                 try
                 {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
+                    RawOutputLine line;
+                    while ((line = reader.ReadOutputLine()) != null)
                     {
-                        OutputReceived?.Invoke(this, new ScriptOutputEventArgs(session.Script.Id, session.Native.ProcessId, line, isError));
+                        OutputReceived?.Invoke(this, new ScriptOutputEventArgs(session.Script.Id,
+                            session.Native.ProcessId, line.Text, isError, line.Bytes));
                         if (_logScriptOutput())
                         {
-                            _log.Information("Script '" + SafeName(session.Script.Name) + "' " + (isError ? "stderr" : "stdout") + ": " + line);
+                            _log.Information("Script '" + SafeName(session.Script.Name) + "' " +
+                                (isError ? "stderr" : "stdout") + ": " + line.Text);
                         }
                     }
                 }
@@ -355,7 +358,9 @@ namespace CmdsManager.Infrastructure.Execution
             }
 
             _log.Information("Script '" + SafeName(session.Script.Name) + "' exited with code " + exitCode + ".");
-            InstanceExited?.Invoke(this, new ScriptInstanceEventArgs(session.Script.Id, session.Script.Name, session.Native.ProcessId, session.StartedAt, session.CapturesOutput, exitCode));
+            InstanceExited?.Invoke(this, new ScriptInstanceEventArgs(session.Script.Id, session.Script.Name,
+                session.Native.ProcessId, session.StartedAt, session.CapturesOutput, exitCode,
+                session.Script.Launch.OutputEncoding));
             StateChanged?.Invoke(this, new ScriptStateChangedEventArgs(CloneSnapshot(snapshot)));
         }
 

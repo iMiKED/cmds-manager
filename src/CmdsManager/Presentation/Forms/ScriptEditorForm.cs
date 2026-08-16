@@ -43,7 +43,7 @@ namespace CmdsManager.Presentation.Forms
             MaximizeBox = false;
             ShowInTaskbar = false;
             FormBorderStyle = FormBorderStyle.FixedDialog;
-            ClientSize = new Size(540, 405);
+            ClientSize = new Size(560, 465);
             Icon = ApplicationResources.Icon;
 
             _enabled.Text = _text["Script.Enabled"];
@@ -70,10 +70,13 @@ namespace CmdsManager.Presentation.Forms
             AddRow(content, _text["Script.Interpreter"], _interpreter);
             AddRow(content, _text["Script.Arguments"], _arguments);
             AddRow(content, _text["Script.WorkingDirectory"], WithButton(_workingDirectory, _text["Common.Browse"], BrowseWorkingDirectory));
-            AddFullRow(content, WindowAndStopControls());
-            AddFullRow(content, OutputControls());
-            AddFullRow(content, LaunchCheckBoxes());
-            AddFullRow(content, CompactNumericControls());
+            AddRow(content, _text["Script.WindowMode"], _windowMode);
+            AddRow(content, _text["Script.StopPolicy"], _stopPolicy);
+            AddRow(content, string.Empty, _captureOutput);
+            AddRow(content, _text["Script.Encoding"], _outputEncoding);
+            AddRow(content, string.Empty, _allowParallel);
+            AddRow(content, string.Empty, _autoStart);
+            AddRow(content, string.Empty, CompactNumericControls());
             AddFullRow(content, new Label
             {
                 AutoSize = true,
@@ -234,52 +237,16 @@ namespace CmdsManager.Presentation.Forms
             return table;
         }
 
-        private Control OutputControls()
-        {
-            _outputEncoding.Width = 190;
-            var panel = HorizontalPanel();
-            _captureOutput.Margin = new Padding(2, 5, 12, 2);
-            var label = InlineLabel(_text["Script.Encoding"]);
-            _outputEncoding.Margin = new Padding(4, 2, 2, 2);
-            panel.Controls.Add(_captureOutput);
-            panel.Controls.Add(label);
-            panel.Controls.Add(_outputEncoding);
-            return panel;
-        }
-
         private Control NameAndEnabled()
         {
             _name.Dock = DockStyle.Fill;
+            _name.Margin = new Padding(0, 2, 0, 3);
             _enabled.Margin = new Padding(8, 5, 2, 2);
             var panel = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, Margin = Padding.Empty };
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             panel.Controls.Add(_name, 0, 0);
             panel.Controls.Add(_enabled, 1, 0);
-            return panel;
-        }
-
-        private Control WindowAndStopControls()
-        {
-            _windowMode.Width = 125;
-            _stopPolicy.Width = 220;
-            var panel = HorizontalPanel();
-            panel.Controls.Add(InlineLabel(_text["Script.WindowMode"]));
-            _windowMode.Margin = new Padding(3, 2, 12, 2);
-            panel.Controls.Add(_windowMode);
-            panel.Controls.Add(InlineLabel(_text["Script.StopPolicy"]));
-            _stopPolicy.Margin = new Padding(3, 2, 2, 2);
-            panel.Controls.Add(_stopPolicy);
-            return panel;
-        }
-
-        private Control LaunchCheckBoxes()
-        {
-            var panel = HorizontalPanel();
-            _allowParallel.Margin = new Padding(2, 5, 14, 2);
-            _autoStart.Margin = new Padding(2, 5, 2, 2);
-            panel.Controls.Add(_allowParallel);
-            panel.Controls.Add(_autoStart);
             return panel;
         }
 
@@ -312,13 +279,14 @@ namespace CmdsManager.Presentation.Forms
         private static void AddCompactControl(FlowLayoutPanel panel, string label, NumericUpDown control)
         {
             panel.Controls.Add(InlineLabel(label));
-            control.Margin = new Padding(3, 2, 10, 2);
+            control.Margin = new Padding(3, 2, 7, 2);
             panel.Controls.Add(control);
         }
 
         private static Control WithButton(TextBox textBox, string buttonText, EventHandler click)
         {
             textBox.Dock = DockStyle.Fill;
+            textBox.Margin = new Padding(0, 2, 0, 3);
             var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Margin = Padding.Empty };
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
