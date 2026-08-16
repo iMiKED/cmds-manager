@@ -45,6 +45,13 @@ namespace CmdsManager.Domain
         Failed
     }
 
+    public enum ApplicationTheme
+    {
+        System,
+        Light,
+        Dark
+    }
+
     public sealed class LaunchProfile
     {
         public ScriptInterpreter Interpreter { get; set; } = ScriptInterpreter.Auto;
@@ -84,7 +91,8 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 6;
+        public int ConfigVersion { get; set; } = 7;
+        public ApplicationTheme Theme { get; set; } = ApplicationTheme.System;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
         public bool StartWithWindows { get; set; }

@@ -10,6 +10,8 @@ using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Configuration;
 using CmdsManager.Infrastructure.Execution;
 using CmdsManager.Presentation.Controls;
+using CmdsManager.Presentation.Theming;
+using Microsoft.Win32;
 
 namespace CmdsManager.Presentation.Forms
 {
@@ -24,7 +26,11 @@ namespace CmdsManager.Presentation.Forms
         private readonly LocalizationService _text;
         private readonly DataGridView _grid = new DataGridView();
         private readonly Font _activityFont = new Font("Segoe UI Symbol", 11f, FontStyle.Bold, GraphicsUnit.Point);
+        private readonly Font _gridHeaderFont = new Font("Segoe UI", 9f, FontStyle.Bold, GraphicsUnit.Point);
         private readonly ToolStripTextBox _filter = new ToolStripTextBox();
+        private readonly ToolStrip _toolbar;
+        private readonly Dictionary<ToolStripButton, ToolbarIcon> _toolbarIcons =
+            new Dictionary<ToolStripButton, ToolbarIcon>();
         private readonly ConsoleTabsControl _console;
         private readonly SplitContainer _mainSplit;
         private readonly System.Windows.Forms.Timer _layoutSaveTimer = new System.Windows.Forms.Timer { Interval = 600 };
@@ -50,6 +56,7 @@ namespace CmdsManager.Presentation.Forms
         private bool _restoringPaneLayout;
         private bool _consolePaneMaximized;
         private int _normalConsolePaneHeight;
+        private AppThemePalette _palette = AppThemePalette.Light();
 
         public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
             IScriptEditorLauncher editor, IApplicationStartupRegistration startup, IExecutionLog log, LocalizationService text)
@@ -70,22 +77,32 @@ namespace CmdsManager.Presentation.Forms
             Icon = ApplicationResources.Icon;
             KeyPreview = true;
 
-            var strip = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, RenderMode = ToolStripRenderMode.System };
-            _addButton = Button((sender, args) => AddScript());
-            _editButton = Button((sender, args) => EditSelected());
-            _deleteButton = Button(async (sender, args) => await DeleteSelectedAsync());
-            _startButton = Button((sender, args) => StartSelected());
-            _stopButton = Button(async (sender, args) => await StopSelectedAsync());
-            _startAllButton = Button((sender, args) => RunAllEnabled());
-            _stopAllButton = Button(async (sender, args) => await StopAllAsync());
-            _reloadButton = Button((sender, args) => ReloadConfiguration());
-            _settingsButton = Button((sender, args) => OpenSettings());
-            _aboutButton = Button((sender, args) => ShowAbout());
-            _exitButton = Button((sender, args) => ExitRequested?.Invoke(this, EventArgs.Empty));
+            _toolbar = new ToolStrip
+            {
+                GripStyle = ToolStripGripStyle.Hidden,
+                AutoSize = false,
+                Height = 42,
+                Padding = new Padding(7, 4, 7, 4),
+                ImageScalingSize = new Size(16, 16),
+                CanOverflow = true
+            };
+            _addButton = Button((sender, args) => AddScript(), ToolbarIcon.Add);
+            _editButton = Button((sender, args) => EditSelected(), ToolbarIcon.Edit);
+            _deleteButton = Button(async (sender, args) => await DeleteSelectedAsync(), ToolbarIcon.Delete, FluentToolRole.Danger);
+            _startButton = Button((sender, args) => StartSelected(), ToolbarIcon.Start, FluentToolRole.Primary);
+            _stopButton = Button(async (sender, args) => await StopSelectedAsync(), ToolbarIcon.Stop);
+            _startAllButton = Button((sender, args) => RunAllEnabled(), ToolbarIcon.StartAll);
+            _stopAllButton = Button(async (sender, args) => await StopAllAsync(), ToolbarIcon.StopAll);
+            _reloadButton = Button((sender, args) => ReloadConfiguration(), ToolbarIcon.Reload);
+            _settingsButton = Button((sender, args) => OpenSettings(), ToolbarIcon.Settings);
+            _aboutButton = Button((sender, args) => ShowAbout(), ToolbarIcon.About);
+            _exitButton = Button((sender, args) => ExitRequested?.Invoke(this, EventArgs.Empty), ToolbarIcon.Exit, FluentToolRole.Danger);
+            UseCompactImageOnly(_reloadButton, _settingsButton, _aboutButton, _exitButton);
             _filter.AutoSize = false;
             _filter.Width = 160;
+            _filter.Height = 24;
             _filter.TextChanged += (sender, args) => RefreshGrid();
-            strip.Items.AddRange(new ToolStripItem[]
+            _toolbar.Items.AddRange(new ToolStripItem[]
             {
                 _addButton, _editButton, _deleteButton, new ToolStripSeparator(),
                 _startButton, _stopButton, _startAllButton, _stopAllButton, new ToolStripSeparator(),
@@ -107,10 +124,11 @@ namespace CmdsManager.Presentation.Forms
             _mainSplit.Panel1.Controls.Add(_grid);
             _mainSplit.Panel2.Controls.Add(_console);
             Controls.Add(_mainSplit);
-            Controls.Add(strip);
-            strip.Dock = DockStyle.Top;
+            Controls.Add(_toolbar);
+            _toolbar.Dock = DockStyle.Top;
 
             _grid.SelectionChanged += HandleGridSelectionChanged;
+            _grid.RowPostPaint += HandleGridRowPostPaint;
             _grid.CellDoubleClick += (sender, args) => { if (args.RowIndex >= 0) EditSelected(); };
             _mainSplit.SplitterMoved += HandleSplitterMoved;
             _mainSplit.DoubleClick += (sender, args) => ToggleConsolePaneMaximized();
@@ -126,6 +144,7 @@ namespace CmdsManager.Presentation.Forms
             _supervisor.InstanceStarted += HandleInstanceStarted;
             _supervisor.InstanceExited += HandleInstanceExited;
             _text.Changed += HandleLocalizationChanged;
+            SystemEvents.UserPreferenceChanged += HandleSystemPreferenceChanged;
             _console.CloseRequested += HandleConsoleCloseRequested;
             _console.PaneMaximizeRequested += HandleConsolePaneMaximizeRequested;
             ApplyLocalization();
@@ -205,7 +224,7 @@ namespace CmdsManager.Presentation.Forms
 
         public void ShowAbout()
         {
-            using (var form = new AboutForm(_text)) form.ShowDialog(this);
+            using (var form = new AboutForm(_text, Configuration.Application.Theme)) form.ShowDialog(this);
         }
 
         protected override void Dispose(bool disposing)
@@ -217,11 +236,19 @@ namespace CmdsManager.Presentation.Forms
                 _supervisor.InstanceStarted -= HandleInstanceStarted;
                 _supervisor.InstanceExited -= HandleInstanceExited;
                 _text.Changed -= HandleLocalizationChanged;
+                SystemEvents.UserPreferenceChanged -= HandleSystemPreferenceChanged;
                 _console.CloseRequested -= HandleConsoleCloseRequested;
                 _console.PaneMaximizeRequested -= HandleConsolePaneMaximizeRequested;
                 _layoutSaveTimer.Stop();
                 _layoutSaveTimer.Dispose();
+                foreach (var button in _toolbarIcons.Keys)
+                {
+                    var image = button.Image;
+                    button.Image = null;
+                    image?.Dispose();
+                }
                 _activityFont.Dispose();
+                _gridHeaderFont.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -237,14 +264,24 @@ namespace CmdsManager.Presentation.Forms
             _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             _grid.AutoGenerateColumns = false;
             _grid.RowHeadersVisible = false;
+            _grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
+            _grid.RowTemplate.Height = 38;
+            _grid.ColumnHeadersHeight = 34;
+            _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            _grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            _grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
+            _grid.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+            _grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+            _grid.ColumnHeadersDefaultCellStyle.Font = _gridHeaderFont;
             _grid.BackgroundColor = SystemColors.Window;
             _grid.BorderStyle = BorderStyle.None;
-            var activityColumn = Column("Activity", 34);
-            activityColumn.MinimumWidth = 34;
+            var activityColumn = Column("Activity", 40);
+            activityColumn.MinimumWidth = 40;
             activityColumn.Resizable = DataGridViewTriState.False;
             activityColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
             activityColumn.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
             activityColumn.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            activityColumn.DefaultCellStyle.Padding = Padding.Empty;
             activityColumn.DefaultCellStyle.Font = _activityFont;
             _grid.Columns.Add(activityColumn);
             _grid.Columns.Add(Column("Name", 170));
@@ -287,6 +324,7 @@ namespace CmdsManager.Presentation.Forms
             _settingsButton.Text = _text["Main.Settings"];
             _aboutButton.Text = _text["Main.About"];
             _exitButton.Text = _text["Main.Exit"];
+            foreach (var button in _toolbarIcons.Keys) button.ToolTipText = button.Text;
             _filterLabel.Text = _text["Main.Filter"];
             _filter.ToolTipText = _text["Main.FilterHint"];
             _grid.Columns["Activity"].HeaderText = "●";
@@ -307,6 +345,7 @@ namespace CmdsManager.Presentation.Forms
             _contextFolder.Text = _text["Main.Context.ShowFolder"];
             _contextDelete.Text = _text["Main.Context.DeleteEntry"];
             RefreshGrid();
+            ApplyTheme();
         }
 
         private void RefreshGrid()
@@ -346,7 +385,8 @@ namespace CmdsManager.Presentation.Forms
 
         private void AddScript()
         {
-            using (var form = new ScriptEditorForm(null, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath), _text))
+            using (var form = new ScriptEditorForm(null, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath), _text,
+                Configuration.Application.Theme))
             {
                 if (form.ShowDialog(this) != DialogResult.OK) return;
                 var candidate = Configuration.Clone();
@@ -359,7 +399,8 @@ namespace CmdsManager.Presentation.Forms
         {
             var selected = SelectedScript;
             if (selected == null) return;
-            using (var form = new ScriptEditorForm(selected, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath), _text))
+            using (var form = new ScriptEditorForm(selected, Configuration.Defaults, Path.GetDirectoryName(_store.ConfigPath), _text,
+                Configuration.Application.Theme))
             {
                 if (form.ShowDialog(this) != DialogResult.OK) return;
                 var candidate = Configuration.Clone();
@@ -443,6 +484,7 @@ namespace CmdsManager.Presentation.Forms
                     _store.Save(candidate);
                     _state.Current = candidate;
                     _console.ApplySettings();
+                    ApplyTheme();
                     ApplyConsolePaneHeight();
                     MessageBox.Show(this, _text["Main.SettingsSaved"], _text["Main.Settings"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
@@ -468,6 +510,7 @@ namespace CmdsManager.Presentation.Forms
                 _startup.Synchronize(reloaded.Application.StartWithWindows);
                 _state.Current = reloaded;
                 _console.ApplySettings();
+                ApplyTheme();
                 ApplyConsolePaneHeight();
                 _log.Information("Configuration reloaded from disk.");
             }
@@ -498,7 +541,7 @@ namespace CmdsManager.Presentation.Forms
         {
             var active = runtime.State == ScriptRuntimeState.Starting ||
                 runtime.State == ScriptRuntimeState.Running || runtime.State == ScriptRuntimeState.Stopping;
-            var rowColor = script.Enabled || active ? SystemColors.ControlText : SystemColors.GrayText;
+            var rowColor = script.Enabled || active ? _palette.Text : _palette.DisabledText;
             if (row.DefaultCellStyle.ForeColor != rowColor) row.DefaultCellStyle.ForeColor = rowColor;
 
             var stateText = StateText(runtime);
@@ -511,19 +554,19 @@ namespace CmdsManager.Presentation.Forms
             switch (runtime.State)
             {
                 case ScriptRuntimeState.Starting:
-                    backgroundColor = Color.FromArgb(255, 250, 225);
+                    backgroundColor = _palette.StartingBackground;
                     break;
                 case ScriptRuntimeState.Running:
-                    backgroundColor = Color.FromArgb(234, 248, 239);
+                    backgroundColor = _palette.RunningBackground;
                     break;
                 case ScriptRuntimeState.Stopping:
-                    backgroundColor = Color.FromArgb(255, 243, 224);
+                    backgroundColor = _palette.StoppingBackground;
                     break;
                 case ScriptRuntimeState.Failed:
-                    backgroundColor = Color.MistyRose;
+                    backgroundColor = _palette.FailedBackground;
                     break;
                 default:
-                    backgroundColor = SystemColors.Window;
+                    backgroundColor = row.Index % 2 == 0 ? _palette.Surface : _palette.SurfaceAlternate;
                     break;
             }
             if (row.DefaultCellStyle.BackColor != backgroundColor)
@@ -769,6 +812,50 @@ namespace CmdsManager.Presentation.Forms
             else ApplyLocalization();
         }
 
+        private void HandleSystemPreferenceChanged(object sender, UserPreferenceChangedEventArgs args)
+        {
+            if (Configuration.Application.Theme != ApplicationTheme.System || IsDisposed || !IsHandleCreated) return;
+            if (InvokeRequired) BeginInvoke((Action)ApplyTheme);
+            else ApplyTheme();
+        }
+
+        private void ApplyTheme()
+        {
+            _palette = AppThemeManager.Resolve(Configuration.Application.Theme);
+            AppThemeManager.ApplyWindow(this, Configuration.Application.Theme);
+            AppThemeManager.ApplyToolStrip(_toolbar, _palette);
+            AppThemeManager.ApplyToolStrip(_grid.ContextMenuStrip, _palette);
+            _console.ApplyApplicationTheme(Configuration.Application.Theme);
+            ApplyToolbarIcons();
+            foreach (DataGridViewRow row in _grid.Rows)
+            {
+                if (!(row.Tag is Guid)) continue;
+                var script = Configuration.Scripts.FirstOrDefault(item => item.Id == (Guid)row.Tag);
+                if (script != null) ApplyRuntimeVisual(row, script, _supervisor.GetSnapshot(script.Id));
+            }
+            _grid.Invalidate();
+        }
+
+        private void ApplyToolbarIcons()
+        {
+            foreach (var pair in _toolbarIcons)
+            {
+                var previous = pair.Key.Image;
+                var role = pair.Key.Tag is FluentToolRole ? (FluentToolRole)pair.Key.Tag : FluentToolRole.Normal;
+                var color = role == FluentToolRole.Primary ? Color.White :
+                    role == FluentToolRole.Danger ? _palette.Danger : _palette.Text;
+                pair.Key.Image = ToolbarIconFactory.Create(pair.Value, color);
+                previous?.Dispose();
+            }
+        }
+
+        private void HandleGridRowPostPaint(object sender, DataGridViewRowPostPaintEventArgs args)
+        {
+            if (args.RowIndex < 0 || !_grid.Rows[args.RowIndex].Selected) return;
+            using (var brush = new SolidBrush(_palette.Accent))
+                args.Graphics.FillRectangle(brush, args.RowBounds.Left, args.RowBounds.Top, 3, args.RowBounds.Height);
+        }
+
         private ScriptDefinition SelectedScript
         {
             get
@@ -815,11 +902,31 @@ namespace CmdsManager.Presentation.Forms
                 ApplicationResources.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        private static ToolStripButton Button(EventHandler click)
+        private ToolStripButton Button(EventHandler click, ToolbarIcon icon, FluentToolRole role = FluentToolRole.Normal)
         {
-            var button = new ToolStripButton { DisplayStyle = ToolStripItemDisplayStyle.Text };
+            var button = new ToolStripButton
+            {
+                DisplayStyle = ToolStripItemDisplayStyle.ImageAndText,
+                ImageScaling = ToolStripItemImageScaling.None,
+                AutoSize = true,
+                Margin = new Padding(1, 0, 1, 0),
+                Padding = new Padding(5, 3, 5, 3),
+                Tag = role,
+                Overflow = ToolStripItemOverflow.AsNeeded
+            };
             button.Click += click;
+            _toolbarIcons.Add(button, icon);
             return button;
+        }
+
+        private static void UseCompactImageOnly(params ToolStripButton[] buttons)
+        {
+            foreach (var button in buttons)
+            {
+                button.DisplayStyle = ToolStripItemDisplayStyle.Image;
+                button.AutoToolTip = true;
+                button.Padding = new Padding(5, 3, 5, 3);
+            }
         }
 
         private static DataGridViewTextBoxColumn Column(string name, int width)

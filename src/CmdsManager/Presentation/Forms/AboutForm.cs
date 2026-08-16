@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using CmdsManager.Application;
+using CmdsManager.Domain;
+using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Presentation.Forms
 {
@@ -13,7 +15,7 @@ namespace CmdsManager.Presentation.Forms
         private const string AuthorUrl = "https://github.com/iMiKED";
         private readonly Bitmap _iconBitmap;
 
-        public AboutForm(LocalizationService text)
+        public AboutForm(LocalizationService text, ApplicationTheme theme = ApplicationTheme.System)
         {
             if (text == null) throw new ArgumentNullException(nameof(text));
             Text = text["About.Title"];
@@ -28,7 +30,7 @@ namespace CmdsManager.Presentation.Forms
             var title = InformationLabel(ApplicationResources.DisplayName);
             title.Font = new Font(Font.FontFamily, 18f, FontStyle.Bold, GraphicsUnit.Point);
             var versionLabel = InformationLabel(text.Get("About.Version", ApplicationResources.Version));
-            versionLabel.ForeColor = Color.FromArgb(93, 103, 116);
+            versionLabel.Tag = AppThemeManager.MutedTextTag;
             var description = InformationLabel(text["About.Description"]);
             description.MaximumSize = new Size(390, 0);
 
@@ -111,6 +113,13 @@ namespace CmdsManager.Presentation.Forms
             Controls.Add(background);
             AcceptButton = close;
             CancelButton = close;
+
+            var palette = AppThemeManager.Resolve(theme);
+            AppThemeManager.ApplyWindow(this, theme);
+            layout.BackColor = Color.Transparent;
+            information.BackColor = Color.Transparent;
+            buttons.BackColor = Color.Transparent;
+            background.ApplyPalette(palette);
         }
 
         protected override void Dispose(bool disposing)
@@ -137,31 +146,36 @@ namespace CmdsManager.Presentation.Forms
 
         private sealed class FadeGradientPanel : Panel
         {
+            private AppThemePalette _palette = AppThemePalette.Light();
+
             internal FadeGradientPanel()
             {
                 DoubleBuffered = true;
                 ResizeRedraw = true;
             }
 
+            internal void ApplyPalette(AppThemePalette palette)
+            {
+                _palette = palette ?? AppThemePalette.Light();
+                Invalidate();
+            }
+
             protected override void OnPaintBackground(PaintEventArgs args)
             {
                 if (ClientRectangle.Width <= 0 || ClientRectangle.Height <= 0) return;
-                using (var brush = new LinearGradientBrush(ClientRectangle,
-                    Color.FromArgb(215, 231, 251), Color.FromArgb(254, 254, 255), 0f))
+                var start = _palette.IsDark ? Color.FromArgb(36, 50, 71) : Color.FromArgb(215, 231, 251);
+                var middle = _palette.IsDark ? Color.FromArgb(28, 36, 47) : Color.FromArgb(237, 245, 254);
+                var end = _palette.IsDark ? Color.FromArgb(23, 28, 35) : Color.FromArgb(254, 254, 255);
+                using (var brush = new LinearGradientBrush(ClientRectangle, start, end, 0f))
                 {
                     brush.InterpolationColors = new ColorBlend
                     {
-                        Colors = new[]
-                        {
-                            Color.FromArgb(207, 226, 250),
-                            Color.FromArgb(237, 245, 254),
-                            Color.FromArgb(254, 254, 255)
-                        },
+                        Colors = new[] { start, middle, end },
                         Positions = new[] { 0f, 0.43f, 1f }
                     };
                     args.Graphics.FillRectangle(brush, ClientRectangle);
                 }
-                using (var accent = new SolidBrush(Color.FromArgb(63, 126, 197)))
+                using (var accent = new SolidBrush(_palette.Accent))
                     args.Graphics.FillRectangle(accent, 0, 0, 5, ClientRectangle.Height);
             }
         }

@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using CmdsManager.Domain;
+using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Presentation.Forms
 {
@@ -30,6 +32,11 @@ namespace CmdsManager.Presentation.Forms
         internal event EventHandler FullScreenChanged;
 
         internal bool IsFullScreen { get; private set; }
+
+        internal void ApplyApplicationTheme(ApplicationTheme theme)
+        {
+            AppThemeManager.ApplyTitleBar(this, AppThemeManager.Resolve(theme).IsDark);
+        }
 
         internal Control ReleaseContent()
         {

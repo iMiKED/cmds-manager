@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Presentation.Controls;
+using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Presentation.Forms
 {
@@ -22,6 +23,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly TextBox _powerShell7Path = new TextBox();
         private readonly NumericUpDown _retention = new NumericUpDown { Minimum = 1, Maximum = 3650, Width = 72, TextAlign = HorizontalAlignment.Right };
         private readonly ComboBox _language = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly ComboBox _theme = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly TextBox _fontDisplay = new TextBox { ReadOnly = true };
         private readonly Button _consoleTextColor = ColorButton();
         private readonly Button _consoleBackgroundColor = ColorButton();
@@ -56,9 +58,13 @@ namespace CmdsManager.Presentation.Forms
             _logScriptOutput.Text = _text["Settings.LogOutput"];
             foreach (var code in localization.Languages.Keys.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
                 _language.Items.Add(new DisplayItem<string>(code, _text.GetForLanguage(code, "Language.Name")));
+            _theme.Items.Add(new DisplayItem<ApplicationTheme>(ApplicationTheme.System, _text["Theme.System"]));
+            _theme.Items.Add(new DisplayItem<ApplicationTheme>(ApplicationTheme.Light, _text["Theme.Light"]));
+            _theme.Items.Add(new DisplayItem<ApplicationTheme>(ApplicationTheme.Dark, _text["Theme.Dark"]));
 
             var general = CreateTable();
             AddRow(general, _text["Settings.Language"], _language);
+            AddRow(general, _text["Settings.Theme"], _theme);
             AddRow(general, _text["Settings.ConsoleFont"], WithFontButton());
             AddRow(general, string.Empty, _startWithWindows);
             AddRow(general, string.Empty, _startMinimized);
@@ -68,7 +74,7 @@ namespace CmdsManager.Presentation.Forms
             {
                 AutoSize = true,
                 MaximumSize = new Size(335, 0),
-                ForeColor = SystemColors.GrayText,
+                Tag = AppThemeManager.MutedTextTag,
                 Text = _text["Settings.Warning"]
             });
 
@@ -98,7 +104,7 @@ namespace CmdsManager.Presentation.Forms
             AddRow(appearance, _text["Settings.ActiveTabBackground"], ColorWithOpacity(_activeTabBackgroundColor, _activeTabOpacity));
             AddFiller(appearance);
 
-            var tabs = new TabControl { Dock = DockStyle.Fill };
+            var tabs = new FluentTabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(Page(_text["Settings.Tab.General"], general));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Appearance"], appearance));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Tools"], tools));
@@ -134,11 +140,15 @@ namespace CmdsManager.Presentation.Forms
             _fontSize = source.ConsoleFontSize;
             UpdateFontDisplay();
             SelectValue(_language, localization.Language);
+            SelectValue(_theme, source.Theme);
+            _theme.SelectedIndexChanged += (sender, args) =>
+                AppThemeManager.ApplyWindow(this, GetValue(_theme, ApplicationTheme.System));
 
             SettingsResult = source;
             LanguageResult = localization.Language;
             AcceptButton = save;
             CancelButton = cancel;
+            AppThemeManager.ApplyWindow(this, source.Theme);
         }
 
         public ApplicationSettings SettingsResult { get; private set; }
@@ -164,6 +174,7 @@ namespace CmdsManager.Presentation.Forms
                 SettingsResult.EditorArguments = _editorArguments.Text.Trim();
                 SettingsResult.LogRetentionDays = decimal.ToInt32(_retention.Value);
                 SettingsResult.LogScriptOutput = _logScriptOutput.Checked;
+                SettingsResult.Theme = GetValue(_theme, ApplicationTheme.System);
                 SettingsResult.ConsoleFontName = _fontName;
                 SettingsResult.ConsoleFontSize = _fontSize;
                 SettingsResult.ConsoleForegroundColor = ConsoleAppearance.ToHex(_consoleTextColor.BackColor);
@@ -259,6 +270,7 @@ namespace CmdsManager.Presentation.Forms
                 UseVisualStyleBackColor = false,
                 Margin = Padding.Empty
             };
+            button.Tag = AppThemeManager.PreserveColorsTag;
             button.FlatAppearance.BorderColor = Color.FromArgb(150, 150, 150);
             button.Click += (sender, args) =>
             {

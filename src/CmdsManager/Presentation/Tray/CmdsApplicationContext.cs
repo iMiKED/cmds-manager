@@ -6,8 +6,11 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using CmdsManager.Application;
+using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Execution;
 using CmdsManager.Presentation.Forms;
+using CmdsManager.Presentation.Theming;
+using Microsoft.Win32;
 
 namespace CmdsManager.Presentation.Tray
 {
@@ -19,6 +22,7 @@ namespace CmdsManager.Presentation.Tray
         private readonly IExecutionLog _log;
         private readonly LocalizationService _text;
         private readonly NotifyIcon _tray;
+        private readonly ContextMenuStrip _menu;
         private readonly ToolStripMenuItem _toggle = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _startAll = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _stopAll = new ToolStripMenuItem();
@@ -42,8 +46,8 @@ namespace CmdsManager.Presentation.Tray
             _stopAll.Click += async (sender, args) => await _mainForm.StopAllAsync();
             _about.Click += (sender, args) => _mainForm.ShowAbout();
             _exit.Click += async (sender, args) => await ExitApplicationAsync();
-            var menu = new ContextMenuStrip();
-            menu.Items.AddRange(new ToolStripItem[]
+            _menu = new ContextMenuStrip();
+            _menu.Items.AddRange(new ToolStripItem[]
             {
                 _toggle, new ToolStripSeparator(), _startAll, _stopAll,
                 new ToolStripSeparator(), _about, _exit
@@ -52,11 +56,12 @@ namespace CmdsManager.Presentation.Tray
             {
                 Icon = ApplicationResources.Icon,
                 Text = ApplicationResources.WindowTitle,
-                ContextMenuStrip = menu,
+                ContextMenuStrip = _menu,
                 Visible = true
             };
             ApplyLocalization();
             _text.Changed += HandleLocalizationChanged;
+            SystemEvents.UserPreferenceChanged += HandleSystemPreferenceChanged;
             _tray.MouseClick += HandleTrayClick;
             _mainForm.ExitRequested += async (sender, args) => await ExitApplicationAsync();
 
@@ -121,6 +126,7 @@ namespace CmdsManager.Presentation.Tray
             if (disposing)
             {
                 _text.Changed -= HandleLocalizationChanged;
+                SystemEvents.UserPreferenceChanged -= HandleSystemPreferenceChanged;
                 _tray.Visible = false;
                 _tray.Dispose();
                 if (!_mainForm.IsDisposed)
@@ -204,6 +210,16 @@ namespace CmdsManager.Presentation.Tray
             _stopAll.Text = _text["Main.StopAll"];
             _about.Text = _text["Main.About"];
             _exit.Text = _text["Main.Exit"];
+            AppThemeManager.ApplyToolStrip(_menu,
+                AppThemeManager.Resolve(_state.Current.Application.Theme));
+        }
+
+        private void HandleSystemPreferenceChanged(object sender, UserPreferenceChangedEventArgs args)
+        {
+            if (_state.Current.Application.Theme != ApplicationTheme.System ||
+                _mainForm.IsDisposed || !_mainForm.IsHandleCreated) return;
+            if (_mainForm.InvokeRequired) _mainForm.BeginInvoke((Action)ApplyLocalization);
+            else ApplyLocalization();
         }
 
         private static string NotifyText(string value)

@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Execution;
+using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Presentation.Forms
 {
@@ -30,7 +31,8 @@ namespace CmdsManager.Presentation.Forms
         private readonly ComboBox _stopPolicy = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly NumericUpDown _stopTimeout = new NumericUpDown { Minimum = 0, Maximum = 3600, Width = 58, TextAlign = HorizontalAlignment.Right };
 
-        public ScriptEditorForm(ScriptDefinition source, LaunchProfile defaults, string configurationDirectory, LocalizationService text)
+        public ScriptEditorForm(ScriptDefinition source, LaunchProfile defaults, string configurationDirectory,
+            LocalizationService text, ApplicationTheme theme = ApplicationTheme.System)
         {
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _paths = new ScriptCommandBuilder(configurationDirectory);
@@ -81,7 +83,7 @@ namespace CmdsManager.Presentation.Forms
             {
                 AutoSize = true,
                 MaximumSize = new Size(500, 0),
-                ForeColor = SystemColors.GrayText,
+                Tag = AppThemeManager.MutedTextTag,
                 Text = _text["Script.Note"]
             });
 
@@ -126,6 +128,7 @@ namespace CmdsManager.Presentation.Forms
             _interpreter.SelectedIndexChanged += (sender, args) => UpdateCaptureAvailability();
             _captureOutput.CheckedChanged += (sender, args) => UpdateCaptureAvailability();
             UpdateCaptureAvailability();
+            AppThemeManager.ApplyWindow(this, theme);
         }
 
         public ScriptDefinition Result { get; private set; }

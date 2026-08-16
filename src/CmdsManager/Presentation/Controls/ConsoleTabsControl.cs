@@ -12,6 +12,7 @@ using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Execution;
 using CmdsManager.Presentation.Forms;
+using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Presentation.Controls
 {
@@ -114,12 +115,14 @@ namespace CmdsManager.Presentation.Controls
         private ConsoleSession _contextSession;
         private Color _consoleForeground = Color.Gainsboro;
         private Color _consoleBackground = DefaultConsoleBackground;
+        private ApplicationTheme _applicationTheme = ApplicationTheme.System;
 
         public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings)
         {
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
+            Tag = AppThemeManager.PreserveColorsTag;
             BackColor = DefaultConsoleBackground;
             AddEncodingItem(ScriptOutputEncoding.Auto);
             AddEncodingItem(ScriptOutputEncoding.Utf8);
@@ -178,6 +181,18 @@ namespace CmdsManager.Presentation.Controls
 
         public event EventHandler<ConsoleTabCloseRequestedEventArgs> CloseRequested;
         public event EventHandler PaneMaximizeRequested;
+
+        internal void ApplyApplicationTheme(ApplicationTheme theme)
+        {
+            _applicationTheme = theme;
+            var palette = AppThemeManager.Resolve(theme);
+            AppThemeManager.ApplyToolStrip(_menu, palette);
+            foreach (var session in _sessions.Values)
+            {
+                if (session.DetachedWindow != null)
+                    session.DetachedWindow.ApplyApplicationTheme(theme);
+            }
+        }
 
         public bool PaneMaximized { get; private set; }
         public int DetachedTabCount => _sessions.Values.Count(item => item.DetachedWindow != null);
@@ -670,6 +685,7 @@ namespace CmdsManager.Presentation.Controls
             {
                 BackColor = _consoleBackground
             };
+            window.ApplyApplicationTheme(_applicationTheme);
             session.DetachedWindow = window;
             window.ReattachRequested += (sender, args) => AttachSession(session);
             window.FullScreenChanged += (sender, args) => HandleDetachedFullScreenChanged(session);

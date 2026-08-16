@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 6;
+        private const int CurrentVersion = 7;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -145,6 +145,7 @@ namespace CmdsManager.Infrastructure.Configuration
             var result = new AppConfiguration();
             var app = result.Application;
             app.ConfigVersion = ReadInt(ini, "Application", "ConfigVersion", 1, 1, CurrentVersion);
+            app.Theme = ReadEnum(ini, "Application", "Theme", ApplicationTheme.System);
             app.CloseToTray = ReadBool(ini, "Application", "CloseToTray", true);
             app.StartMinimized = ReadBool(ini, "Application", "StartMinimized", false);
             app.StartWithWindows = ReadBool(ini, "Application", "StartWithWindows", false);
@@ -231,6 +232,7 @@ namespace CmdsManager.Infrastructure.Configuration
             var ini = new IniDocument();
             var app = configuration.Application;
             ini.Set("Application", "ConfigVersion", CurrentVersion);
+            ini.Set("Application", "Theme", app.Theme);
             ini.Set("Application", "CloseToTray", Bool(app.CloseToTray));
             ini.Set("Application", "StartMinimized", Bool(app.StartMinimized));
             ini.Set("Application", "StartWithWindows", Bool(app.StartWithWindows));
@@ -315,6 +317,11 @@ namespace CmdsManager.Infrastructure.Configuration
             if (configuration.Application.ConfigVersion != CurrentVersion)
             {
                 throw new ConfigurationValidationException("Application", "ConfigVersion", "unsupported version");
+            }
+
+            if (!Enum.IsDefined(typeof(ApplicationTheme), configuration.Application.Theme))
+            {
+                throw new ConfigurationValidationException("Application", "Theme", "unsupported theme");
             }
 
             if (string.IsNullOrWhiteSpace(configuration.Application.EditorPath))

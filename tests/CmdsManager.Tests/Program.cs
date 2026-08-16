@@ -78,6 +78,7 @@ namespace CmdsManager.Tests
                 var store = new ConfigurationStore(configPath);
                 var configuration = store.LoadOrCreate();
                 configuration.Application.StartWithWindows = true;
+                configuration.Application.Theme = ApplicationTheme.Dark;
                 configuration.Application.LogScriptOutput = false;
                 configuration.Application.ConsoleFontName = "Consolas";
                 configuration.Application.ConsoleFontSize = 11.5f;
@@ -110,6 +111,7 @@ namespace CmdsManager.Tests
 
                 var reloaded = store.Reload();
                 Equal(true, reloaded.Application.StartWithWindows, "application setting");
+                Equal(ApplicationTheme.Dark, reloaded.Application.Theme, "application theme");
                 Equal(1, reloaded.Scripts.Count, "script count");
                 Equal(42, reloaded.Scripts[0].Launch.AutoStartOrder, "auto-start order");
                 Equal(ScriptInterpreter.Cmd, reloaded.Scripts[0].Launch.Interpreter, "interpreter");
@@ -145,7 +147,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(6, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(7, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -155,7 +157,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(6, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal(7, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
                 Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
                 Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
@@ -169,11 +171,20 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nSettings.Title=Настройки CmdsManager\r\n",
                     new UTF8Encoding(false));
                 var version5 = new ConfigurationStore(version5Path).LoadOrCreate();
-                Equal(6, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
+                Equal(7, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
                 Equal("Cmds Manager settings", version5.Localization.Languages["en"]["Settings.Title"],
                     "old default English brand is migrated");
                 Equal("Настройки Cmds Manager", version5.Localization.Languages["ru"]["Settings.Title"],
                     "old default Russian brand is migrated");
+
+                var version6Path = Path.Combine(directory, "Version6.ini");
+                File.WriteAllText(version6Path, "[Application]\r\nConfigVersion=6\r\n", new UTF8Encoding(false));
+                var version6 = new ConfigurationStore(version6Path).LoadOrCreate();
+                Equal(7, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
+                Equal(ApplicationTheme.System, version6.Application.Theme,
+                    "existing installations default to the system application theme");
+                Assert(File.ReadAllText(version6Path, Encoding.UTF8).Contains("Theme=System"),
+                    "theme selection is persisted during version 6 migration");
             });
         }
 
@@ -506,11 +517,12 @@ namespace CmdsManager.Tests
                 var store = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini"));
                 var configuration = store.LoadOrCreate();
                 configuration.Localization.Language = "en";
+                configuration.Application.Theme = ApplicationTheme.Dark;
                 var state = new ConfigurationState(configuration);
                 var text = new LocalizationService(state);
-                using (var about = new AboutForm(text))
+                using (var about = new AboutForm(text, ApplicationTheme.Dark))
                 using (var settings = new SettingsForm(configuration.Application, configuration.PowerShell7Path, configuration.Localization, text))
-                using (var script = new ScriptEditorForm(null, configuration.Defaults, directory, text))
+                using (var script = new ScriptEditorForm(null, configuration.Defaults, directory, text, ApplicationTheme.Dark))
                 {
                     var aboutHandle = about.Handle;
                     var settingsHandle = settings.Handle;
@@ -525,6 +537,15 @@ namespace CmdsManager.Tests
                         "aligned script editor remains compact");
                     Equal("About", about.Text, "English About title comes from INI strings");
                     Equal("Cmds Manager settings", settings.Text, "English settings title comes from INI strings");
+                    Assert(settings.BackColor.GetBrightness() < 0.3f && script.BackColor.GetBrightness() < 0.3f,
+                        "dark application theme reaches compact dialogs");
+                    Assert(AllControls(settings).OfType<TabControl>().Single().GetType().Name == "FluentTabControl",
+                        "settings uses the themed compact tab control");
+                    var themeSelector = AllControls(settings).OfType<ComboBox>().Single(control =>
+                        control.Items.Cast<object>().Select(Convert.ToString)
+                            .SequenceEqual(new[] { "System", "Light", "Dark" }));
+                    Equal("Dark", Convert.ToString(themeSelector.SelectedItem),
+                        "settings exposes and selects system, light, and dark themes");
                     Assert(!AllControls(settings).OfType<ScrollableControl>().Any(control => control.AutoScroll),
                         "settings dialog has no AutoScroll container");
                     Assert(!AllControls(script).OfType<ScrollableControl>().Any(control => control.AutoScroll),
@@ -819,6 +840,7 @@ namespace CmdsManager.Tests
                 var store = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini"));
                 var configuration = store.LoadOrCreate();
                 configuration.Localization.Language = "en";
+                configuration.Application.Theme = ApplicationTheme.Light;
                 configuration.Application.ConsolePaneHeight = 180;
                 var script = new ScriptDefinition
                 {
@@ -856,10 +878,32 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.5.1", form.Text,
+                    Equal("Cmds Manager 0.6.0", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
+                    var toolbar = AllControls(form).OfType<ToolStrip>().Single();
+                    var toolbarButtons = toolbar.Items.OfType<ToolStripButton>().ToArray();
+                    var expectedToolbarButtons = new[]
+                    {
+                        text["Main.Add"], text["Main.Edit"], text["Main.Delete"], text["Main.Start"],
+                        text["Main.Stop"], text["Main.StartAll"], text["Main.StopAll"], text["Main.Reload"],
+                        text["Main.Settings"], text["Main.About"], text["Main.Exit"]
+                    };
+                    Assert(toolbarButtons.Select(button => button.Text).SequenceEqual(expectedToolbarButtons),
+                        "Fluent toolbar preserves every existing command and its order");
+                    Assert(toolbarButtons.All(button => button.Image != null) && toolbar.Height == 42 &&
+                        toolbar.Renderer.GetType().Name == "FluentToolStripRenderer",
+                        "toolbar uses compact icon buttons and the Fluent renderer");
+                    var expectedColumns = new[]
+                    {
+                        "Activity", "Name", "Type", "Interpreter", "AutoStart", "State", "Pid", "Started", "ExitCode", "Path"
+                    };
+                    Assert(grid.Columns.Cast<DataGridViewColumn>().Select(column => column.Name).SequenceEqual(expectedColumns),
+                        "Fluent table preserves every existing column and its order");
+                    Assert(grid.CellBorderStyle == DataGridViewCellBorderStyle.SingleHorizontal &&
+                        grid.RowTemplate.Height == 38 && grid.ColumnHeadersHeight == 34 && !grid.EnableHeadersVisualStyles,
+                        "table uses compact Fluent rows, quiet horizontal separators, and custom headers");
                     form.Show();
                     System.Windows.Forms.Application.DoEvents();
                     var split = FindControl<SplitContainer>(form);
@@ -965,6 +1009,8 @@ namespace CmdsManager.Tests
                 var store = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini"));
                 var configuration = store.LoadOrCreate();
                 configuration.Localization.Language = "en";
+                configuration.Application.Theme = ApplicationTheme.Dark;
+                configuration.Application.ConsoleBackgroundColor = "#102030";
                 var parent = new ScriptDefinition
                 {
                     Id = Guid.NewGuid(),
@@ -1011,6 +1057,10 @@ namespace CmdsManager.Tests
                         .Single(output => childProcessId.Equals(output.Tag));
                     Assert(WaitWithUi(() => childOutput.Text.Contains("managed-child-output"),
                         TimeSpan.FromSeconds(4)), "managed child output is captured in its own tab");
+                    Equal(Color.FromArgb(0x10, 0x20, 0x30), childOutput.BackColor,
+                        "dark application theme does not overwrite the configured console background");
+                    Assert(grid.BackgroundColor.GetBrightness() < 0.25f,
+                        "dark application theme reaches the main script table");
                     Assert(!AllControls(console).OfType<TabControl>().Any(),
                         "managed child tabs use the custom borderless terminal host");
 
