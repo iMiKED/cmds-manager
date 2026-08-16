@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
@@ -11,8 +12,12 @@ namespace CmdsManager.Presentation.Forms
 {
     public sealed class AboutForm : Form
     {
-        private const string AuthorText = "iMiKED from 4PDA — https://github.com/iMiKED";
-        private const string AuthorUrl = "https://github.com/iMiKED";
+        private const string AuthorText = "iMiKED from 4PDA";
+        private const string AuthorUrl = "https://4pda.to/forum/index.php?showuser=1017942";
+        private const string LicenseText = "GNU GPL v3.0";
+        private const string LicenseUrl = "https://www.gnu.org/licenses/gpl-3.0.html";
+        private const string WebsiteUrl = "https://github.com/iMiKED/cmds-manager";
+        private const string DonateUrl = "https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project";
         private readonly Bitmap _iconBitmap;
 
         public AboutForm(LocalizationService text, ApplicationTheme theme = ApplicationTheme.System)
@@ -24,47 +29,52 @@ namespace CmdsManager.Presentation.Forms
             MaximizeBox = false;
             MinimizeBox = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(570, 245);
+            ClientSize = new Size(570, 290);
             Icon = ApplicationResources.Icon;
 
-            var title = InformationLabel(ApplicationResources.DisplayName);
+            var title = new OpticallyAlignedTitleLabel { Text = ApplicationResources.DisplayName };
             title.Font = new Font(Font.FontFamily, 18f, FontStyle.Bold, GraphicsUnit.Point);
             var versionLabel = InformationLabel(text.Get("About.Version", ApplicationResources.Version));
             versionLabel.Tag = AppThemeManager.MutedTextTag;
+            var buildLabel = InformationLabel(text.Get("About.Build", ApplicationResources.BuildTimestamp));
+            buildLabel.Tag = AppThemeManager.MutedTextTag;
             var description = InformationLabel(text["About.Description"]);
             description.MaximumSize = new Size(390, 0);
 
-            var authorText = text["About.Author"] + " " + AuthorText;
-            var author = new LinkLabel
-            {
-                AutoSize = true,
-                Text = authorText,
-                TextAlign = ContentAlignment.MiddleLeft,
-                LinkBehavior = LinkBehavior.HoverUnderline,
-                LinkColor = Color.FromArgb(35, 102, 176),
-                ActiveLinkColor = Color.FromArgb(22, 73, 133)
-            };
-            author.Links.Add(authorText.IndexOf(AuthorUrl, StringComparison.Ordinal), AuthorUrl.Length, AuthorUrl);
-            author.LinkClicked += OpenAuthorLink;
+            var author = InformationLink(text["About.Author"], AuthorText, AuthorUrl);
+            var license = InformationLink(text["About.License"], LicenseText, LicenseUrl);
+            var website = InformationLink(text["About.Website"], WebsiteUrl, WebsiteUrl);
 
-            const int rowGap = 9;
-            title.Margin = new Padding(0, 0, 0, rowGap);
-            versionLabel.Margin = new Padding(0, 0, 0, rowGap);
-            description.Margin = new Padding(0, 0, 0, rowGap);
-            author.Margin = Padding.Empty;
+            var informationRows = new Control[]
+            {
+                title, versionLabel, buildLabel, description, author, license, website
+            };
+            var detailRowHeight = Math.Max(21,
+                informationRows.Skip(1).Max(control => control.PreferredSize.Height + 4));
+            var titleRowHeight = Math.Max(32, title.PreferredSize.Height + 3);
+            foreach (var rowControl in informationRows)
+            {
+                rowControl.AutoSize = false;
+                rowControl.Dock = DockStyle.Fill;
+                rowControl.Margin = Padding.Empty;
+            }
             var information = new TableLayoutPanel
             {
-                Dock = DockStyle.Fill,
-                AutoSize = true,
+                Dock = DockStyle.Top,
+                AutoSize = false,
+                Height = titleRowHeight + detailRowHeight * (informationRows.Length - 1),
                 ColumnCount = 1,
-                RowCount = 4,
-                Margin = new Padding(2, 3, 0, 0)
+                RowCount = informationRows.Length,
+                Margin = new Padding(2, 3, 0, 0),
+                GrowStyle = TableLayoutPanelGrowStyle.FixedSize
             };
-            for (var row = 0; row < 4; row++) information.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            information.Controls.Add(title, 0, 0);
-            information.Controls.Add(versionLabel, 0, 1);
-            information.Controls.Add(description, 0, 2);
-            information.Controls.Add(author, 0, 3);
+            information.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            for (var row = 0; row < informationRows.Length; row++)
+            {
+                information.RowStyles.Add(new RowStyle(SizeType.Absolute,
+                    row == 0 ? titleRowHeight : detailRowHeight));
+                information.Controls.Add(informationRows[row], 0, row);
+            }
 
             _iconBitmap = ApplicationResources.CreateIconBitmap(128);
             var icon = new PictureBox
@@ -77,7 +87,11 @@ namespace CmdsManager.Presentation.Forms
             };
             var close = FluentDialogButtons.Primary(text["Common.Close"], DialogResult.OK);
             close.TransparentCanvas = true;
-            var buttons = FluentDialogButtons.Footer(close);
+            var donate = FluentDialogButtons.Secondary(text["About.Donate"]);
+            donate.TransparentCanvas = true;
+            donate.AccessibleDescription = DonateUrl;
+            donate.Click += (sender, args) => OpenUrl(DonateUrl);
+            var buttons = FluentDialogButtons.Footer(close, donate);
 
             var layout = new TableLayoutPanel
             {
@@ -126,9 +140,49 @@ namespace CmdsManager.Presentation.Forms
             };
         }
 
-        private void OpenAuthorLink(object sender, LinkLabelLinkClickedEventArgs args)
+        private sealed class OpticallyAlignedTitleLabel : Label
         {
-            try { Process.Start(new ProcessStartInfo(AuthorUrl) { UseShellExecute = true }); }
+            internal OpticallyAlignedTitleLabel()
+            {
+                TextAlign = ContentAlignment.MiddleLeft;
+            }
+
+            protected override void OnPaint(PaintEventArgs args)
+            {
+                var textBounds = new Rectangle(1, 0, Math.Max(0, ClientSize.Width - 1), ClientSize.Height);
+                TextRenderer.DrawText(args.Graphics, Text ?? string.Empty, Font, textBounds, ForeColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                    TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
+            }
+        }
+
+        private static LinkLabel InformationLink(string label, string value, string url)
+        {
+            var prefix = (label ?? string.Empty).TrimEnd();
+            var linkText = prefix.Length == 0 ? value : prefix + " " + value;
+            var link = new LinkLabel
+            {
+                AutoSize = true,
+                Text = linkText,
+                TextAlign = ContentAlignment.MiddleLeft,
+                LinkBehavior = LinkBehavior.HoverUnderline,
+                LinkColor = Color.FromArgb(35, 102, 176),
+                ActiveLinkColor = Color.FromArgb(22, 73, 133)
+            };
+            link.Links.Add(linkText.Length - value.Length, value.Length, url);
+            link.LinkClicked += OpenInformationLink;
+            return link;
+        }
+
+        private static void OpenInformationLink(object sender, LinkLabelLinkClickedEventArgs args)
+        {
+            OpenUrl(Convert.ToString(args.Link.LinkData));
+        }
+
+        private static void OpenUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return;
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
             catch (Exception) { }
         }
 

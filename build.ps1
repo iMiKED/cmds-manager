@@ -44,7 +44,9 @@ if (-not (Test-Path -LiteralPath $msbuildPath)) {
     throw "MSBuild was not found: $msbuildPath"
 }
 
-& $msbuildPath $solutionPath -restore -t:Rebuild -p:Configuration=Release -p:Platform=x64 -m -nologo -verbosity:minimal
+$releaseBuildTimestamp = [DateTime]::Now.ToString('dd.MM.yyyy HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture)
+& $msbuildPath $solutionPath -restore -t:Rebuild -p:Configuration=Release -p:Platform=x64 `
+    "-p:CmdsManagerBuildTimestamp=$releaseBuildTimestamp" -m -nologo -verbosity:minimal
 if ($LASTEXITCODE -ne 0) {
     throw "Release build failed with exit code $LASTEXITCODE."
 }
@@ -79,9 +81,13 @@ foreach ($file in $files) {
     }
     Copy-Item -LiteralPath $source -Destination (Join-Path $resolvedStagingRoot $file)
 }
-Copy-Item -LiteralPath (Join-Path $repositoryRoot 'README.md') -Destination (Join-Path $resolvedStagingRoot 'README.md')
+$readmePath = Join-Path $repositoryRoot 'Readme.txt'
+if (-not (Test-Path -LiteralPath $readmePath)) {
+    throw "User Readme.txt is missing: $readmePath"
+}
+Copy-Item -LiteralPath $readmePath -Destination (Join-Path $resolvedStagingRoot 'Readme.txt')
 
-$zipPath = Join-Path $artifactsRoot 'CmdsManager-portable-0.6.6-win-x64.zip'
+$zipPath = Join-Path $artifactsRoot 'CmdsManager-portable-1.0.0-win-x64.zip'
 $resolvedZipPath = [System.IO.Path]::GetFullPath($zipPath)
 if (-not $resolvedZipPath.StartsWith($expectedArtifactsRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Unsafe ZIP output path: $resolvedZipPath"
@@ -107,6 +113,7 @@ catch {
 [pscustomobject]@{
     Executable = $exePath
     ExeBytes = $exeInfo.Length
+    BuildTimestamp = $releaseBuildTimestamp
     PortableZip = $resolvedZipPath
     ZipBytes = $zipInfo.Length
     ZipSha256 = $zipHash.Hash

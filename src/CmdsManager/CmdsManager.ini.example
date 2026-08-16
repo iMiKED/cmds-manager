@@ -52,8 +52,12 @@ Language=ru
 [Strings.en]
 About.Description=Manager for CMD, BAT, PowerShell, and VBS scripts
 About.Author=Author:
+About.Build=Built on: {0}
+About.Donate=Donate
+About.License=License:
 About.Title=About
 About.Version=Version {0}
+About.Website=Visit Website:
 App.UiErrorTitle=Cmds Manager error
 Common.Browse=Browse…
 Common.Cancel=Cancel
@@ -216,8 +220,12 @@ Tray.Toggle=Open / hide
 [Strings.ru]
 About.Description=Менеджер CMD, BAT, PowerShell и VBS-скриптов
 About.Author=Автор:
+About.Build=Собрано: {0}
+About.Donate=Поддержать
+About.License=Лицензия:
 About.Title=О программе
 About.Version=Версия {0}
+About.Website=Посетить сайт:
 App.UiErrorTitle=Ошибка Cmds Manager
 Common.Browse=Обзор…
 Common.Cancel=Отмена

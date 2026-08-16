@@ -568,6 +568,15 @@ namespace CmdsManager.Infrastructure.Configuration
                 return true;
             }
 
+            string previousBuildLabel;
+            if ((ini.TryGet("Strings.en", "About.Build", out previousBuildLabel) &&
+                    string.Equals(previousBuildLabel, "Build: {0}", StringComparison.Ordinal)) ||
+                (ini.TryGet("Strings.ru", "About.Build", out previousBuildLabel) &&
+                    string.Equals(previousBuildLabel, "Сборка: {0}", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
             return false;
         }
 
@@ -576,6 +585,10 @@ namespace CmdsManager.Infrastructure.Configuration
             if (configuration.Localization?.Languages == null) return;
             foreach (var language in configuration.Localization.Languages.Values)
                 language.Remove("Settings.Warning");
+            ReplaceUnmodifiedString(configuration.Localization, "en", "About.Build",
+                "Build: {0}", "Built on: {0}");
+            ReplaceUnmodifiedString(configuration.Localization, "ru", "About.Build",
+                "Сборка: {0}", "Собрано: {0}");
             if (loadedVersion < 3)
             {
                 ReplaceUnmodifiedString(configuration.Localization, "ru", "Script.Encoding.Auto",

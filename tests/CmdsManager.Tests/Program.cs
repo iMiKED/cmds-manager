@@ -28,6 +28,7 @@ namespace CmdsManager.Tests
         {
             Run("INI parser", TestIniParser);
             Run("Configuration round-trip and conflict", TestConfigurationStore);
+            Run("Bilingual release user guide", TestReleaseUserGuide);
             Run("Script validation and command line", TestCommandBuilder);
             Run("Managed process execution", TestProcessExecution);
             Run("Cyrillic output encodings", TestCyrillicOutput);
@@ -220,7 +221,83 @@ namespace CmdsManager.Tests
                     "version 7 migration writes window placement and word-wrap keys");
                 Assert(!version7Text.Contains("Settings.Warning="),
                     "version 7 migration removes the obsolete auto-start warning string");
+
+                var version8Path = Path.Combine(directory, "Version8.ini");
+                File.WriteAllText(version8Path,
+                    "[Application]\r\nConfigVersion=8\r\n" +
+                    "[Localization]\r\nLanguage=en\r\n" +
+                    "[Strings.en]\r\nAbout.Build=Build: {0}\r\n" +
+                    "[Strings.ru]\r\nAbout.Build=Сборка: {0}\r\n",
+                    new UTF8Encoding(false));
+                var version8 = new ConfigurationStore(version8Path).LoadOrCreate();
+                Equal("Built on: {0}", version8.Localization.Languages["en"]["About.Build"],
+                    "unmodified English build label is refreshed within schema version 8");
+                Equal("Собрано: {0}", version8.Localization.Languages["ru"]["About.Build"],
+                    "unmodified Russian build label is refreshed within schema version 8");
+                var version8Text = File.ReadAllText(version8Path, Encoding.UTF8);
+                Assert(version8Text.Contains("About.Build=Built on: {0}") &&
+                    version8Text.Contains("About.Build=Собрано: {0}"),
+                    "refreshed build labels are persisted to the INI file");
             });
+        }
+
+        private static void TestReleaseUserGuide()
+        {
+            var readmePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                @"..\..\..\..\Readme.txt"));
+            Assert(File.Exists(readmePath), "release Readme.txt exists at the repository root");
+            var guide = File.ReadAllText(readmePath, Encoding.UTF8);
+            Assert(guide.StartsWith("CMDS MANAGER 1.0.0", StringComparison.Ordinal),
+                "user guide identifies the stable release");
+            foreach (var heading in new[]
+            {
+                "ENGLISH", "РУССКИЙ", "4. FEATURES", "4. ВОЗМОЖНОСТИ",
+                "9. VERSION HISTORY", "9. ИСТОРИЯ ВЕРСИЙ",
+                "10. COMPLETE INI SETTINGS REFERENCE", "10. ПОЛНОЕ ОПИСАНИЕ НАСТРОЕК INI"
+            })
+            {
+                Assert(guide.Contains(heading), "user guide contains section " + heading);
+            }
+
+            foreach (var version in new[]
+            {
+                "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
+                "0.5.1", "0.5.0", "0.4.2", "0.4.1", "0.4.0", "0.3.0", "0.2.1", "0.2.0", "0.1.0-dev"
+            })
+            {
+                Assert(guide.Contains(version + " -") || guide.Contains(version + " —"),
+                    "user guide contains Git-derived version " + version);
+            }
+
+            foreach (var key in new[]
+            {
+                "ConfigVersion", "Theme", "CloseToTray", "StartMinimized", "StartWithWindows",
+                "StartHiddenWhenAutoStarted", "AutoStartScripts", "ConfirmBeforeDelete",
+                "MainWindowPlacementSaved", "MainWindowX", "MainWindowY", "MainWindowWidth",
+                "MainWindowHeight", "MainWindowMaximized", "EditorPath", "EditorArguments", "LogLevel",
+                "LogRetentionDays", "LogScriptOutput", "ConsoleFontName", "ConsoleFontSize",
+                "ConsolePaneHeight", "ConsoleForegroundColor", "ConsoleBackgroundColor",
+                "ConsoleBackgroundOpacity", "ConsoleTabForegroundColor", "ConsoleActiveTabForegroundColor",
+                "ConsoleTabBackgroundColor", "ConsoleTabBackgroundOpacity", "ConsoleActiveTabBackgroundColor",
+                "ConsoleActiveTabBackgroundOpacity", "Interpreter", "Arguments", "WorkingDirectory",
+                "WindowMode", "CaptureOutput", "OutputEncoding", "WordWrap", "AllowParallelInstances",
+                "StopPolicy", "StopTimeoutSeconds", "PowerShell7Path", "Language", "Name", "Enabled", "Path",
+                "AutoStartWithApplication", "AutoStartOrder", "AutoStartDelaySeconds"
+            })
+            {
+                Assert(guide.Contains(key), "user guide documents INI key " + key);
+            }
+
+            foreach (var donationValue in new[]
+            {
+                "019a0a87-1f4a-7df8-97c7-ef32ebf9a0e3", "4400430236422744",
+                "https://buymeacoffee.com/danceworldtv", "https://paypal.me/imiked",
+                "https://boosty.to/danceworldtv/donate", "0xBd0593dDF1DFC7fD95bB6F4e6A5c73Da44048B40",
+                "UQCr2Fp7t34QFuO4IesN3Lo3186a93Z1B7Wu76imr6APIXgk", "TE5A3GT84eJ9iT3mYYLv1KXJnMaiZFxNuA"
+            })
+            {
+                Assert(guide.Contains(donationValue), "user guide contains support option " + donationValue);
+            }
         }
 
         private static void TestCommandBuilder()
@@ -567,7 +644,7 @@ namespace CmdsManager.Tests
                     about.PerformLayout();
                     settings.PerformLayout();
                     script.PerformLayout();
-                    Assert(about.ClientSize.Width <= 580 && about.ClientSize.Height <= 250,
+                    Assert(about.ClientSize.Width <= 580 && about.ClientSize.Height <= 300,
                         "About box remains compact with a 128 px icon");
                     Assert(settings.ClientSize.Width <= 530 && settings.ClientSize.Height <= 340, "settings dialog is narrower and compact");
                     Assert(script.ClientSize.Width <= 570 && script.ClientSize.Height <= 475,
@@ -679,29 +756,70 @@ namespace CmdsManager.Tests
 
                     var author = AllControls(about).OfType<LinkLabel>()
                         .Single(control => control.Text.StartsWith("Author: iMiKED from 4PDA", StringComparison.Ordinal));
-                    Equal("https://github.com/iMiKED", Convert.ToString(author.Links[0].LinkData), "hard-coded author link");
+                    Equal("https://4pda.to/forum/index.php?showuser=1017942",
+                        Convert.ToString(author.Links[0].LinkData), "hard-coded author link");
+                    Equal("Author: ".Length, author.Links[0].Start,
+                        "only the author value follows the localized label in the link");
+                    Equal("iMiKED from 4PDA".Length, author.Links[0].Length,
+                        "only the author name is clickable");
+                    var license = AllControls(about).OfType<LinkLabel>()
+                        .Single(control => control.Text.StartsWith("License: GNU GPL v3.0", StringComparison.Ordinal));
+                    Equal("https://www.gnu.org/licenses/gpl-3.0.html",
+                        Convert.ToString(license.Links[0].LinkData), "hard-coded license link");
+                    var website = AllControls(about).OfType<LinkLabel>()
+                        .Single(control => control.Text.StartsWith("Visit Website: https://github.com/iMiKED/cmds-manager",
+                            StringComparison.Ordinal));
+                    Equal("https://github.com/iMiKED/cmds-manager",
+                        Convert.ToString(website.Links[0].LinkData), "hard-coded project website link");
                     var aboutIcon = AllControls(about).OfType<PictureBox>().Single();
                     Assert(aboutIcon.Image != null && aboutIcon.Image.Width == 128 && aboutIcon.Image.Height == 128,
                         "About uses the sharp 128 by 128 application icon frame");
+                    var aboutIconBitmap = aboutIcon.Image as Bitmap;
+                    Assert(aboutIconBitmap != null && aboutIconBitmap.GetPixel(0, 0).A == 0 &&
+                        aboutIconBitmap.GetPixel(64, 64).A == 255,
+                        "embedded 128 px PNG icon frame is decoded without pixel corruption");
                     var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "Cmds Manager");
                     var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
+                    Equal("Version 1.0.0", aboutVersion.Text, "About contains the stable release version");
+                    var aboutBuild = AllControls(about).OfType<Label>()
+                        .First(control => control.Text.StartsWith("Built on: ", StringComparison.Ordinal));
+                    DateTime parsedBuildTimestamp;
+                    Assert(DateTime.TryParseExact(aboutBuild.Text.Substring("Built on: ".Length),
+                            "dd.MM.yyyy HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.None, out parsedBuildTimestamp),
+                        "About build timestamp uses DD.MM.YYYY HH:MM:SS");
                     var aboutDescription = AllControls(about).OfType<Label>().First(control => control.Text == text["About.Description"]);
-                    var aboutLefts = new Control[] { aboutTitle, aboutVersion, aboutDescription, author }
+                    var aboutRows = new Control[]
+                    {
+                        aboutTitle, aboutVersion, aboutBuild, aboutDescription, author, license, website
+                    };
+                    var aboutLefts = aboutRows
                         .Select(control => AbsoluteLeft(control, about)).ToArray();
                     Assert(aboutLefts.Distinct().Count() == 1, "About information lines share one left edge");
-                    Assert(aboutVersion.Top > aboutTitle.Bottom, "version is directly below the application title");
-                    var aboutGaps = new[]
-                    {
-                        aboutVersion.Top - aboutTitle.Bottom,
-                        aboutDescription.Top - aboutVersion.Bottom,
-                        author.Top - aboutDescription.Bottom
-                    };
-                    Assert(aboutGaps.Max() - aboutGaps.Min() <= 1, "About information rows have equal spacing");
+                    Equal(aboutTitle.Bottom, aboutVersion.Top,
+                        "version row starts directly below the application title row");
+                    var aboutGaps = aboutRows.Skip(1)
+                        .Select((control, index) => control.Top - aboutRows[index].Bottom).ToArray();
+                    Assert(aboutGaps.All(gap => gap == 0),
+                        "About information rows do not inherit type-dependent margins");
+                    var detailRowSteps = aboutRows.Skip(2)
+                        .Select((control, index) => control.Top - aboutRows[index + 1].Top).ToArray();
+                    Assert(detailRowSteps.Distinct().Count() == 1,
+                        "About detail rows use one consistent vertical rhythm");
+                    Assert(aboutTitle.GetType().Name.Contains("OpticallyAlignedTitleLabel"),
+                        "About title removes the large-font left overhang padding");
                     Assert(AllControls(about).Any(control => control.GetType().Name.Contains("FadeGradientPanel")),
                         "About contains the fade-out gradient background");
-                    var aboutClose = AllControls(about).OfType<Button>().Single();
+                    var aboutClose = AllControls(about).OfType<Button>()
+                        .Single(control => control.Text == text["Common.Close"]);
                     Assert(aboutClose.GetType().Name == "FluentButton" && aboutClose.Height >= 28,
                         "About uses a compact Fluent close button");
+                    var aboutDonate = AllControls(about).OfType<Button>()
+                        .Single(control => control.Text == text["About.Donate"]);
+                    Assert(aboutDonate.GetType().Name == "FluentButton" && aboutDonate.Height >= 28,
+                        "About Donate uses the compact Fluent button style");
+                    Equal("https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project",
+                        aboutDonate.AccessibleDescription, "Donate button destination");
                     var settingsSave = AllControls(settings).OfType<Button>()
                         .Single(control => control.Text == text["Common.Save"]);
                     var primaryProperty = aboutClose.GetType().GetProperty("Primary",
@@ -715,6 +833,8 @@ namespace CmdsManager.Tests
                         primaryProperty != null && (bool)primaryProperty.GetValue(settingsSave) &&
                         (bool)primaryProperty.GetValue(aboutClose),
                         "About Close and Settings Save use the same primary Fluent button template");
+                    Assert(primaryProperty != null && !(bool)primaryProperty.GetValue(aboutDonate),
+                        "Donate is the secondary About action");
                     Assert(typeof(MainForm).Assembly.GetManifestResourceNames().Contains("CmdsManager.Assets.CmdsManager.ico"),
                         "application icon is embedded in the executable");
                     Assert(!configuration.Localization.Languages.Values.Any(values => values.Values.Any(value =>
@@ -1007,7 +1127,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.6.6", form.Text,
+                    Equal("Cmds Manager 1.0.0", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");

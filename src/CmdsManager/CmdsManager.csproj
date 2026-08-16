@@ -20,6 +20,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\CmdsManager.ico</ApplicationIcon>
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+    <CmdsManagerBuildTimestamp Condition="'$(CmdsManagerBuildTimestamp)' == ''">$([System.DateTime]::Now.ToString('dd.MM.yyyy HH:mm:ss'))</CmdsManagerBuildTimestamp>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
     <DebugSymbols>true</DebugSymbols>
@@ -61,5 +62,17 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+  <Target Name="GenerateBuildMetadata" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_CmdsManagerBuildMetadata Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>BuildDateTime</_Parameter1>
+        <_Parameter2>$(CmdsManagerBuildTimestamp)</_Parameter2>
+      </_CmdsManagerBuildMetadata>
+    </ItemGroup>
+    <WriteCodeFragment Language="C#" OutputFile="$(IntermediateOutputPath)CmdsManager.BuildMetadata.g.cs"
+                       AssemblyAttributes="@(_CmdsManagerBuildMetadata)">
+      <Output TaskParameter="OutputFile" ItemName="Compile" />
+    </WriteCodeFragment>
+  </Target>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

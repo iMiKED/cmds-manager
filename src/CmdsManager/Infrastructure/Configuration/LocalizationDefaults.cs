@@ -92,7 +92,8 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Settings.EditorMissing", "Редактор не найден."), Pair("Settings.PowerShellMissing", "Указанный путь PowerShell 7 не найден."),
                 Pair("Settings.AppFilter", "Приложения|*.exe|Все файлы|*.*"), Pair("Settings.PowerShellFilter", "PowerShell 7|pwsh.exe|Приложения|*.exe"),
                 Pair("About.Title", "О программе"), Pair("About.Description", "Менеджер CMD, BAT, PowerShell и VBS-скриптов"), Pair("About.Version", "Версия {0}"),
-                Pair("About.Author", "Автор:"),
+                Pair("About.Build", "Собрано: {0}"), Pair("About.Author", "Автор:"), Pair("About.License", "Лицензия:"),
+                Pair("About.Website", "Посетить сайт:"), Pair("About.Donate", "Поддержать"),
                 Pair("Tray.Toggle", "Открыть / скрыть"), Pair("Tray.AutoStartFailed", "Не удалось автоматически запустить скриптов: {0}. Откройте приложение для подробностей."),
                 Pair("Tray.ExitTitle", "Выход из Cmds Manager"), Pair("Tray.ExitConfirm", "Все запущенные через Cmds Manager скрипты будут остановлены. Выйти?"),
                 Pair("Tray.Exiting", "Cmds Manager — завершение"), Pair("App.UiErrorTitle", "Ошибка Cmds Manager")
@@ -158,7 +159,8 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Settings.EditorRequired", "Specify an editor path."), Pair("Settings.EditorMissing", "The editor was not found."), Pair("Settings.PowerShellMissing", "The PowerShell 7 path was not found."),
                 Pair("Settings.AppFilter", "Applications|*.exe|All files|*.*"), Pair("Settings.PowerShellFilter", "PowerShell 7|pwsh.exe|Applications|*.exe"),
                 Pair("About.Title", "About"), Pair("About.Description", "Manager for CMD, BAT, PowerShell, and VBS scripts"), Pair("About.Version", "Version {0}"),
-                Pair("About.Author", "Author:"),
+                Pair("About.Build", "Built on: {0}"), Pair("About.Author", "Author:"), Pair("About.License", "License:"),
+                Pair("About.Website", "Visit Website:"), Pair("About.Donate", "Donate"),
                 Pair("Tray.Toggle", "Open / hide"), Pair("Tray.AutoStartFailed", "Could not auto-start {0} script(s). Open the app for details."),
                 Pair("Tray.ExitTitle", "Exit Cmds Manager"), Pair("Tray.ExitConfirm", "All scripts started by Cmds Manager will be stopped. Exit?"),
                 Pair("Tray.Exiting", "Cmds Manager — exiting"), Pair("App.UiErrorTitle", "Cmds Manager error")

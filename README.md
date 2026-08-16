@@ -1,130 +1,60 @@
 # Cmds Manager
 
-Компактный portable-менеджер скриптов для Windows 10/11 x64.
+Compact portable manager for CMD, BAT, PowerShell, and VBS scripts on Windows.
 
-Поддерживаются:
+Current version: **1.0.0**
 
-- `.cmd` и `.bat` через `cmd.exe`;
-- `.ps1` через Windows PowerShell 5.1 или установленный PowerShell 7;
-- `.vbs` через `cscript.exe` или `wscript.exe`;
-- добавление, редактирование и удаление записей;
-- запуск, быстрый пакетный захват вывода и остановка всего дерева процессов через Windows Job Objects;
-- статичный зелёный индикатор выполняющегося скрипта и статус на консольной вкладке;
-- отдельная вкладка консоли для каждого управляемого экземпляра запуска, синхронизированная с выбранной строкой;
-- сохранение в INI размера, положения и развёрнутого состояния главного окна, а также высоты области консолей; область можно развернуть так, чтобы в прокручиваемом списке осталась одна строка;
-- отделение вкладки в самостоятельное окно без перезапуска процесса и потери накопленного вывода; закрытие окна возвращает ту же вкладку обратно;
-- полноэкранный режим активной вкладки через контекстное меню или `F11`, выход — `Esc`/`F11`;
-- закрытие вкладки крестиком с остановкой именно показанного в ней процесса;
-- адаптивный Auto-режим вывода для смешанных строк UTF-8, Windows-1251 и OEM с явным выбором UTF-8, OEM Windows, Windows-1251 или UTF-16 LE;
-- контекстное меню активной консольной вкладки: отдельные шрифт и кодировка, сохраняемый для сценария перенос слов, копирование и сохранение выделения или всего текста;
-- настраиваемые через INI цвета текста и фона консоли, а также текста и фона обычной/активной вкладки с отдельной непрозрачностью фонов;
-- современная компактная таблица, toolbar и контролы окон «Настройки» и добавления/редактирования скрипта в стиле Fluent Compact с системной, светлой и тёмной темами без внешних UI-зависимостей;
-- собственная полоса вкладок в стиле Windows Terminal без системного `TabControl`: скруглённый верх, фигурные нижние плечи, отсутствие кнопочных border/pressed-state и разделителей; активная вкладка без шва сливается с консолью, предусмотрены hover-состояние, статусная точка и крестик внутри вкладки;
-- русский и английский интерфейс со строками в INI;
-- автозапуск отдельных скриптов при старте Cmds Manager;
-- автозапуск приложения для текущего пользователя;
-- управление главным окном одиночным кликом по tray-иконке;
-- INI-конфигурация рядом с EXE;
-- About Box с чёткой 128×128-иконкой, сведениями об авторе и fade-out-градиентом, а также журнал событий.
+Cmds Manager lives in the notification area and provides one place to organize,
+start, monitor, and stop scripts. It supports Windows PowerShell 5.1 and
+PowerShell 7, managed child console tabs, output encoding correction, detachable
+and full-screen consoles, per-script auto-start, application auto-start, themes,
+and INI-based configuration.
 
-## Системные требования
+## Features
 
-- Windows 10 или Windows 11 x64;
-- .NET Framework 4.8;
-- PowerShell 7 требуется только для записей, где он выбран явно, и не входит в архив.
+- Add, edit, remove, start, and stop `.cmd`, `.bat`, `.ps1`, and `.vbs` entries
+- Stop the complete managed process tree when a script, tab, or application closes
+- Capture output in modern console tabs, including managed child CMD launches
+- Detach a running console without restarting its process
+- Select UTF-8, OEM Windows, Windows-1251, UTF-16 LE, or automatic decoding
+- Copy or save selected text and save the complete console buffer
+- Configure console fonts, colors, opacity, Word Wrap, themes, and workspace size
+- Start selected scripts with the application and start the application with Windows
+- Use Russian or English UI strings stored in `CmdsManager.ini`
+- Run as a small Portable ZIP without elevation or bundled runtime dependencies
 
-Приложение не запрашивает повышение прав. Скрипты с UAC и процессы, пытающиеся выйти из Job Object, в первой версии не поддерживаются.
+## Requirements
 
-## Portable-запуск
+- Windows 10 or Windows 11 x64
+- .NET Framework 4.8
+- PowerShell 7 only for entries that explicitly select it
 
-1. Распакуйте ZIP в постоянную пользовательскую папку с правами записи;
-2. запустите `CmdsManager.exe`;
-3. при первом запуске рядом с EXE будет создан `CmdsManager.ini`;
-4. добавьте скрипты через главное окно или отредактируйте INI и выберите «Перечитать INI».
+## Download and documentation
 
-Настройки языка находятся в `[Localization]`, а все изменяемые строки интерфейса — в секциях `[Strings.ru]` и `[Strings.en]`. INI версий 1–7 автоматически мигрирует в версию 8 с резервной копией; пользовательские переводы сохраняются.
+The release is distributed as a Portable ZIP. Extract the complete archive to a
+writable folder and run `CmdsManager.exe`.
 
-Тема оболочки задаётся параметром `Theme=System|Light|Dark`. Системный режим следует настройке темы приложений Windows и обновляется без перезапуска. Цвета консоли и её вкладок настраиваются отдельно и темой оболочки не перезаписываются.
+The bilingual English/Russian user guide, version history, and complete INI
+reference are in [Readme.txt](Readme.txt).
 
-На Windows 11 главное окно запрашивает нативные скруглённые углы через DWM. Windows 10 не поддерживает этот атрибут и сохраняет стандартную прямоугольную системную рамку; точное скругление только верхних углов на ней потребует отдельного custom chrome с собственной обработкой перемещения, resize, Snap и системного меню.
+## Support the Project
 
-Положение и размер главного окна хранятся в `MainWindowX`, `MainWindowY`, `MainWindowWidth`, `MainWindowHeight` и `MainWindowMaximized`; флаг `MainWindowPlacementSaved` отличает сохранённую геометрию от начальных значений. При отключённом мониторе окно автоматически возвращается в видимую рабочую область. Высота нижней области хранится в `ConsolePaneHeight`.
+If Cmds Manager saves you time, you can support the author:
 
-Перенос строк задаётся параметром `WordWrap=true|false` в секции конкретного `[Script:<guid>]`; значение для новых записей находится в `[Defaults]`. Переключение через контекстное меню вкладки сразу сохраняет параметр в INI и применяет его ко всем активным экземплярам сценария. Порождённые им управляемые вкладки наследуют это значение, в том числе при вложенном запуске.
+- Russia transfers, Ozon Bank / SBP: [open payment page](https://finance.ozon.ru/apps/sbp/ozonbankpay/019a0a87-1f4a-7df8-97c7-ef32ebf9a0e3)
+- VISA: `4400430236422744`
+- [Buy Me a Coffee](https://buymeacoffee.com/danceworldtv)
+- [PayPal](https://paypal.me/imiked)
+- [Boosty](https://boosty.to/danceworldtv/donate)
+- USDT Ethereum (ERC20): `0xBd0593dDF1DFC7fD95bB6F4e6A5c73Da44048B40`
+- USDT TON: `UQCr2Fp7t34QFuO4IesN3Lo3186a93Z1B7Wu76imr6APIXgk`
+- USDT Tron (TRC20): `TE5A3GT84eJ9iT3mYYLv1KXJnMaiZFxNuA`
 
-Параметры внешнего вида используют цвета `#RRGGBB` и непрозрачность от `0` до `100`. Для встроенного `RichTextBox` прозрачность фона визуально смешивается с системным фоном окна; WinForms не поддерживает настоящую поканальную прозрачность нативного RichEdit-контрола.
+## Author
 
-Для вывода обычно подходит `OutputEncoding=Auto`: каждая строка сначала строго проверяется как UTF-8, затем эвристически выбирается Windows-1251 или системная OEM-кодировка. Поэтому в одной вкладке корректно сосуществуют OEM-вывод CMD, Windows-1251-вывод Java и UTF-8-вывод Node.js/PowerShell, включая кириллицу и китайские символы.
+[iMiKED from 4PDA](https://4pda.to/forum/index.php?showuser=1017942)
 
-Cmds Manager хранит ограниченную историю сырых байтов вкладки. Если источник определён неверно, щёлкните вкладку правой кнопкой мыши и выберите кодировку: уже показанный текст будет декодирован заново. Там же можно выбрать отдельный шрифт и перенос слов, скопировать выделение либо сохранить выделение/всю вкладку в UTF-8-файл, отделить вкладку, открыть её на весь экран или развернуть всю нижнюю область.
+## License
 
-Detach переносит уже существующий контрол вывода между главным и отдельным окном: PID, процесс, Job Object, сырая история, выделение и поток новых строк остаются прежними. Это окно перехваченного вывода Cmds Manager, а не новый интерактивный `conhost`. Интерактивный stdin и полноценная терминальная эмуляция требуют запуска процесса через ConPTY с самого начала; добавить ConPTY к уже запущенному процессу с перенаправленными stdout/stderr без перезапуска нельзя.
-
-## Дочерний управляемый запуск
-
-Каждый запуск через Cmds Manager получает отдельную вкладку. В захватываемом `.cmd`/`.bat` автоматически перехватывается типовая команда `start`, запускающая дочерний `.cmd`/`.bat` через `cmd /c` или `cmd /k`:
-
-```bat
-start "RuStore GPlay Bridge" /D "%ROOT_DIR%" cmd /k "%ROOT_DIR%start-gplay-bridge.cmd"
-```
-
-Дочерний скрипт запускается внутри Cmds Manager, получает отдельные PID, Job Object и соседнюю вкладку с заголовком из команды `start`. Временная служебная копия родительского BAT создаётся рядом с ним только на время выполнения, чтобы сохранить семантику `%~dp0`, и затем удаляется. Другие разновидности `start` не перехватываются.
-
-Зарегистрированную запись также можно запустить в уже работающем менеджере по имени или GUID:
-
-```bat
-"C:\Path\To\CmdsManager.exe" --run "Имя дочернего скрипта"
-```
-
-Команды `call child.bat` и `& child.ps1` выполняются внутри текущего интерпретатора и используют его общий stdout, поэтому остаются в родительской вкладке.
-
-Не запускайте приложение прямо из ZIP и не размещайте его в защищённом `Program Files`: конфигурация и подпапка `logs` находятся рядом с EXE.
-
-При включении «Запускать Cmds Manager при входе в Windows» приложение создаёт техническое значение `CmdsManager` в:
-
-```text
-HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-```
-
-Перемещение portable-папки после этого потребует ручного запуска приложения для обновления пути автозапуска.
-
-## Безопасность журналов
-
-По умолчанию stdout/stderr показывается только в окне и не сохраняется. Опция сохранения вывода включается отдельно, поскольку скрипт может напечатать токен, пароль или другие секреты. Аргументы запуска никогда не записываются в журнал самим Cmds Manager.
-
-## Сборка
-
-Требуются Visual Studio Build Tools 2022 с MSBuild. Локальный .NET Framework 4.8 targeting pack необязателен: при первой сборке MSBuild восстанавливает официальный build-only пакет reference assemblies. Он не копируется в приложение.
-
-```powershell
-.\build.ps1
-```
-
-Скрипт выполняет Release-сборку, запускает тестовый EXE и создаёт:
-
-```text
-artifacts\CmdsManager-portable-0.6.6-win-x64.zip
-```
-
-Пропустить тесты можно только явно:
-
-```powershell
-.\build.ps1 -SkipTests
-```
-
-## Структура
-
-```text
-src/CmdsManager/             один production WinForms EXE
-tests/CmdsManager.Tests/     автономные тесты без test framework
-docs/                        локальные проектные материалы, исключены из Git
-```
-
-## Текущие ограничения
-
-- нет запуска с повышением прав;
-- нет Windows-службы;
-- процессы всегда завершаются при явном выходе;
-- нет встроенного текстового редактора;
-- отделённые окна сохраняют текущую модель перехваченного вывода и не добавляют интерактивный stdin/ANSI-эмуляцию ConPTY;
-- Git remote и лицензия пока не заданы.
+Cmds Manager is free software distributed under the
+[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html).
