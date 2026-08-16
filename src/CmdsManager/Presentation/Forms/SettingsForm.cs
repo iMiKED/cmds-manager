@@ -107,18 +107,10 @@ namespace CmdsManager.Presentation.Forms
             tabs.TabPages.Add(Page(_text["Settings.Tab.General"], general));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Appearance"], appearance));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Tools"], tools));
-            var buttons = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.RightToLeft,
-                Dock = DockStyle.Fill,
-                AutoSize = true,
-                Padding = new Padding(0, 4, 6, 5)
-            };
-            var save = new FluentButton { Text = _text["Common.Save"], AutoSize = true, Primary = true };
-            var cancel = new FluentButton { Text = _text["Common.Cancel"], AutoSize = true, DialogResult = DialogResult.Cancel };
+            var save = FluentDialogButtons.Primary(_text["Common.Save"]);
+            var cancel = FluentDialogButtons.Secondary(_text["Common.Cancel"], DialogResult.Cancel);
             save.Click += SaveAndClose;
-            buttons.Controls.Add(save);
-            buttons.Controls.Add(cancel);
+            var buttons = FluentDialogButtons.Footer(save, cancel);
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));

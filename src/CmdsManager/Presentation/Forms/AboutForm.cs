@@ -75,21 +75,9 @@ namespace CmdsManager.Presentation.Forms
                 Anchor = AnchorStyles.Left | AnchorStyles.Top,
                 Margin = new Padding(0, 1, 18, 0)
             };
-            var close = new FluentButton
-            {
-                Text = text["Common.Close"],
-                DialogResult = DialogResult.OK,
-                AutoSize = true,
-                Primary = true
-            };
-            var buttons = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.RightToLeft,
-                AutoSize = true,
-                Margin = new Padding(0, 8, 0, 0)
-            };
-            buttons.Controls.Add(close);
+            var close = FluentDialogButtons.Primary(text["Common.Close"], DialogResult.OK);
+            close.TransparentCanvas = true;
+            var buttons = FluentDialogButtons.Footer(close);
 
             var layout = new TableLayoutPanel
             {

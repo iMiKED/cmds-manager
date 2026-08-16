@@ -702,6 +702,19 @@ namespace CmdsManager.Tests
                     var aboutClose = AllControls(about).OfType<Button>().Single();
                     Assert(aboutClose.GetType().Name == "FluentButton" && aboutClose.Height >= 28,
                         "About uses a compact Fluent close button");
+                    var settingsSave = AllControls(settings).OfType<Button>()
+                        .Single(control => control.Text == text["Common.Save"]);
+                    var primaryProperty = aboutClose.GetType().GetProperty("Primary",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    Assert(settingsSave.GetType() == aboutClose.GetType() &&
+                        settingsSave.Padding == aboutClose.Padding &&
+                        settingsSave.MinimumSize == aboutClose.MinimumSize &&
+                        settingsSave.FlatStyle == aboutClose.FlatStyle &&
+                        settingsSave.FlatAppearance.BorderSize == aboutClose.FlatAppearance.BorderSize &&
+                        settingsSave.Parent.Padding == aboutClose.Parent.Padding &&
+                        primaryProperty != null && (bool)primaryProperty.GetValue(settingsSave) &&
+                        (bool)primaryProperty.GetValue(aboutClose),
+                        "About Close and Settings Save use the same primary Fluent button template");
                     Assert(typeof(MainForm).Assembly.GetManifestResourceNames().Contains("CmdsManager.Assets.CmdsManager.ico"),
                         "application icon is embedded in the executable");
                     Assert(!configuration.Localization.Languages.Values.Any(values => values.Values.Any(value =>
@@ -994,7 +1007,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.6.5", form.Text,
+                    Equal("Cmds Manager 0.6.6", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");

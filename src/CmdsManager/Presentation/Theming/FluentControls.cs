@@ -11,6 +11,43 @@ namespace CmdsManager.Presentation.Theming
         void ApplyPalette(AppThemePalette palette);
     }
 
+    internal static class FluentDialogButtons
+    {
+        internal static FluentButton Primary(string text, DialogResult dialogResult = DialogResult.None)
+        {
+            return new FluentButton
+            {
+                Text = text,
+                DialogResult = dialogResult,
+                AutoSize = true,
+                Primary = true
+            };
+        }
+
+        internal static FluentButton Secondary(string text, DialogResult dialogResult = DialogResult.None)
+        {
+            return new FluentButton
+            {
+                Text = text,
+                DialogResult = dialogResult,
+                AutoSize = true
+            };
+        }
+
+        internal static FlowLayoutPanel Footer(params FluentButton[] buttons)
+        {
+            var footer = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.RightToLeft,
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                Padding = new Padding(0, 4, 6, 5)
+            };
+            footer.Controls.AddRange(buttons ?? new FluentButton[0]);
+            return footer;
+        }
+    }
+
     internal static class FluentGeometry
     {
         internal static GraphicsPath RoundedRectangle(RectangleF bounds, float radius)
@@ -70,6 +107,7 @@ namespace CmdsManager.Presentation.Theming
 
         internal bool Primary { get; set; }
         internal bool UseAssignedColors { get; set; }
+        internal bool TransparentCanvas { get; set; }
 
         public void ApplyPalette(AppThemePalette palette)
         {
@@ -78,7 +116,9 @@ namespace CmdsManager.Presentation.Theming
             Padding = new Padding(7, 2, 7, 2);
             if (!UseAssignedColors)
             {
-                BackColor = Primary ? _palette.Accent : _palette.Surface;
+                BackColor = TransparentCanvas
+                    ? Color.Transparent
+                    : Primary ? _palette.Accent : _palette.Surface;
                 ForeColor = Primary ? Color.White : _palette.Text;
             }
             Invalidate();
@@ -95,7 +135,8 @@ namespace CmdsManager.Presentation.Theming
         protected override void OnPaint(PaintEventArgs args)
         {
             var canvas = Parent?.BackColor ?? _palette.Window;
-            args.Graphics.Clear(canvas);
+            if (TransparentCanvas) base.OnPaintBackground(args);
+            else args.Graphics.Clear(canvas);
             args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
             var fill = UseAssignedColors ? BackColor : Primary ? _palette.Accent : _palette.Surface;
