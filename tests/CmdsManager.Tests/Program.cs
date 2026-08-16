@@ -616,6 +616,26 @@ namespace CmdsManager.Tests
                     Assert(tabs.TabPages[0].Text.Contains(text["Console.Running"]), "running console tab has localized status text");
                     Assert(tabs.ItemSize.Height >= 28 && tabs.Font.Name == "Segoe UI",
                         "console tabs use the modernized taller Segoe UI presentation");
+                    Equal(TabAppearance.FlatButtons, tabs.Appearance,
+                        "console tabs suppress the classic framed TabControl page");
+                    Assert(tabs.DisplayRectangle.Left == 0 && tabs.DisplayRectangle.Width == tabs.ClientSize.Width &&
+                        tabs.DisplayRectangle.Top == tabs.GetTabRect(0).Bottom,
+                        "terminal tab content joins the selected tab without a classic border gap");
+                    Equal(Padding.Empty, tabs.TabPages[0].Padding,
+                        "console content fills the terminal page edge to edge");
+                    var tabPathFactory = typeof(ConsoleTabsControl).GetMethod("TerminalTabPath",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    Assert(tabPathFactory != null, "terminal tab shape renderer exists");
+                    using (var tabPath = (System.Drawing.Drawing2D.GraphicsPath)tabPathFactory.Invoke(null,
+                        new object[] { new Rectangle(0, 0, 180, 36), 10, 7 }))
+                    {
+                        Assert(tabPath.PathTypes.Any(type => (type & 3) ==
+                            (byte)System.Drawing.Drawing2D.PathPointType.Bezier3),
+                            "terminal tab silhouette uses curved corners instead of a rectangle");
+                        Assert(tabPath.PathPoints.Any(point => Math.Abs(point.X) < 0.1f &&
+                            Math.Abs(point.Y - 36f) < 0.1f),
+                            "terminal tab silhouette has a flared lower shoulder");
+                    }
 
                     var menu = tabs.ContextMenuStrip;
                     Assert(menu != null && output.ContextMenuStrip == menu, "console tabs and output share the active-tab menu");

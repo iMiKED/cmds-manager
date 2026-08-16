@@ -20,6 +20,10 @@ namespace CmdsManager.Presentation.Controls
         private const int MaxCharactersPerTab = 200000;
         private const int TrimToCharacters = 150000;
         private const int MaxEventsPerTick = 50000;
+        private static readonly Color ConsoleBackground = Color.FromArgb(28, 28, 28);
+        private static readonly Color TabStripBackground = Color.FromArgb(236, 238, 241);
+        private static readonly Color InactiveTabBackground = Color.FromArgb(248, 249, 251);
+        private static readonly Color HoverTabBackground = Color.FromArgb(222, 229, 238);
 
         private enum ConsoleEventKind
         {
@@ -58,17 +62,38 @@ namespace CmdsManager.Presentation.Controls
             internal RichTextBox Output { get; set; }
         }
 
+        private sealed class TerminalTabControl : TabControl
+        {
+            public override Rectangle DisplayRectangle
+            {
+                get
+                {
+                    if (TabCount == 0) return base.DisplayRectangle;
+                    var headerBottom = GetTabRect(0).Bottom;
+                    return headerBottom <= 0
+                        ? base.DisplayRectangle
+                        : new Rectangle(0, headerBottom, ClientSize.Width,
+                            Math.Max(0, ClientSize.Height - headerBottom));
+                }
+            }
+        }
+
         private readonly LocalizationService _text;
         private readonly Func<ApplicationSettings> _settings;
         private readonly ConcurrentQueue<ConsoleEvent> _events = new ConcurrentQueue<ConsoleEvent>();
         private readonly Dictionary<int, ConsoleSession> _sessions = new Dictionary<int, ConsoleSession>();
         private readonly HashSet<int> _suppressedProcesses = new HashSet<int>();
-        private readonly TabControl _tabs = new TabControl { Dock = DockStyle.Fill, ShowToolTips = true };
+        private readonly TabControl _tabs = new TerminalTabControl
+        {
+            Dock = DockStyle.Fill,
+            ShowToolTips = true,
+            BackColor = TabStripBackground
+        };
         private readonly Label _empty = new Label
         {
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = Color.FromArgb(28, 28, 28),
+            BackColor = ConsoleBackground,
             ForeColor = Color.Silver
         };
         private readonly Timer _flushTimer = new Timer { Interval = 50 };
@@ -93,7 +118,7 @@ namespace CmdsManager.Presentation.Controls
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
-            BackColor = Color.FromArgb(28, 28, 28);
+            BackColor = ConsoleBackground;
             AddEncodingItem(ScriptOutputEncoding.Auto);
             AddEncodingItem(ScriptOutputEncoding.Utf8);
             AddEncodingItem(ScriptOutputEncoding.Windows1251);
@@ -122,9 +147,10 @@ namespace CmdsManager.Presentation.Controls
             _closeItem.Click += (sender, args) => CloseSelectedTab();
 
             _tabs.ContextMenuStrip = _menu;
+            _tabs.Appearance = TabAppearance.FlatButtons;
             _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
-            _tabs.Padding = new Point(18, 5);
-            _tabs.ItemSize = new Size(0, 30);
+            _tabs.Padding = new Point(20, 6);
+            _tabs.ItemSize = new Size(0, 36);
             _tabs.Font = _tabFont;
             _tabs.DrawItem += DrawTab;
             _tabs.MouseDown += HandleTabMouseDown;
@@ -313,7 +339,7 @@ namespace CmdsManager.Presentation.Controls
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 WordWrap = false,
-                BackColor = Color.FromArgb(28, 28, 28),
+                BackColor = ConsoleBackground,
                 ForeColor = Color.Gainsboro,
                 BorderStyle = BorderStyle.None,
                 DetectUrls = true,
@@ -322,7 +348,7 @@ namespace CmdsManager.Presentation.Controls
                 Font = _consoleFont ?? new Font(FontFamily.GenericMonospace, 10f),
                 ContextMenuStrip = _menu
             };
-            var page = new TabPage { BackColor = output.BackColor, Padding = new Padding(3) };
+            var page = new TabPage { BackColor = output.BackColor, Padding = Padding.Empty };
             page.Controls.Add(output);
             var session = new ConsoleSession
             {
@@ -535,27 +561,37 @@ namespace CmdsManager.Presentation.Controls
         {
             if (args.Index < 0 || args.Index >= _tabs.TabPages.Count) return;
             var tabBounds = _tabs.GetTabRect(args.Index);
-            var bounds = Rectangle.Inflate(tabBounds, -2, -2);
+            if (args.Index == 0)
+            {
+                using (var strip = new SolidBrush(TabStripBackground))
+                    args.Graphics.FillRectangle(strip, 0, 0, _tabs.ClientSize.Width, tabBounds.Bottom + 2);
+            }
+
+            var bounds = Rectangle.FromLTRB(tabBounds.Left + 1, tabBounds.Top + 2,
+                tabBounds.Right - 1, tabBounds.Bottom);
             var selected = args.Index == _tabs.SelectedIndex;
             var hot = args.Index == _hotTabIndex;
             var background = selected
-                ? Color.FromArgb(250, 252, 255)
-                : hot ? Color.FromArgb(231, 237, 245) : Color.FromArgb(240, 243, 247);
-            var border = selected ? Color.FromArgb(94, 137, 190) : Color.FromArgb(205, 211, 219);
+                ? ConsoleBackground
+                : hot ? HoverTabBackground : InactiveTabBackground;
+            var border = hot ? Color.FromArgb(177, 190, 207) : Color.FromArgb(210, 215, 222);
 
             var previousSmoothing = args.Graphics.SmoothingMode;
             args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var path = RoundedRectangle(bounds, 6))
+            using (var path = TerminalTabPath(bounds, selected ? 10 : 8, selected ? 7 : 5))
             using (var brush = new SolidBrush(background))
-            using (var pen = new Pen(border))
             {
                 args.Graphics.FillPath(brush, path);
-                args.Graphics.DrawPath(pen, path);
+                if (!selected && hot)
+                {
+                    using (var pen = new Pen(border)) args.Graphics.DrawPath(pen, path);
+                }
             }
-            if (selected)
+            if (!selected && !hot)
             {
-                using (var accent = new SolidBrush(Color.FromArgb(45, 118, 196)))
-                    args.Graphics.FillRectangle(accent, bounds.Left + 6, bounds.Bottom - 3, bounds.Width - 12, 3);
+                using (var separator = new Pen(Color.FromArgb(205, 209, 215)))
+                    args.Graphics.DrawLine(separator, bounds.Right - 2, bounds.Top + 8,
+                        bounds.Right - 2, bounds.Bottom - 7);
             }
 
             var pageText = _tabs.TabPages[args.Index].Text ?? string.Empty;
@@ -563,16 +599,23 @@ namespace CmdsManager.Presentation.Controls
             var displayText = pageText.Length > 2 && (running || pageText.StartsWith("○ ", StringComparison.Ordinal))
                 ? pageText.Substring(2)
                 : pageText;
-            using (var status = new SolidBrush(running ? Color.FromArgb(35, 166, 90) : Color.FromArgb(125, 135, 145)))
-                args.Graphics.FillEllipse(status, bounds.Left + 9, bounds.Top + (bounds.Height - 8) / 2, 8, 8);
+            using (var status = new SolidBrush(running
+                ? Color.FromArgb(42, 190, 107)
+                : selected ? Color.FromArgb(180, 188, 198) : Color.FromArgb(125, 135, 145)))
+                args.Graphics.FillEllipse(status, bounds.Left + 12, bounds.Top + (bounds.Height - 8) / 2, 8, 8);
 
             var closeBounds = CloseBounds(tabBounds);
             if (args.Index == _hotCloseIndex)
             {
-                using (var closeBackground = new SolidBrush(Color.FromArgb(255, 225, 225)))
+                using (var closeBackground = new SolidBrush(selected
+                    ? Color.FromArgb(64, 255, 255, 255)
+                    : Color.FromArgb(255, 225, 225)))
                     args.Graphics.FillEllipse(closeBackground, closeBounds);
             }
-            using (var closePen = new Pen(args.Index == _hotCloseIndex ? Color.Firebrick : Color.FromArgb(105, 110, 118), 1.5f))
+            var closeColor = args.Index == _hotCloseIndex
+                ? selected ? Color.White : Color.Firebrick
+                : selected ? Color.FromArgb(225, 230, 236) : Color.FromArgb(105, 110, 118);
+            using (var closePen = new Pen(closeColor, 1.5f))
             {
                 args.Graphics.DrawLine(closePen, closeBounds.Left + 5, closeBounds.Top + 5,
                     closeBounds.Right - 5, closeBounds.Bottom - 5);
@@ -581,10 +624,11 @@ namespace CmdsManager.Presentation.Controls
             }
             args.Graphics.SmoothingMode = previousSmoothing;
 
-            var textBounds = new Rectangle(bounds.Left + 22, bounds.Top + 1,
-                Math.Max(0, closeBounds.Left - bounds.Left - 25), bounds.Height - 3);
+            var textBounds = new Rectangle(bounds.Left + 27, bounds.Top + 1,
+                Math.Max(0, closeBounds.Left - bounds.Left - 30), bounds.Height - 2);
             TextRenderer.DrawText(args.Graphics, displayText, _tabFont, textBounds,
-                Color.FromArgb(42, 48, 56), TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                selected ? Color.FromArgb(245, 247, 250) : Color.FromArgb(42, 48, 56),
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         }
 
@@ -627,14 +671,28 @@ namespace CmdsManager.Presentation.Controls
             return new Rectangle(tabBounds.Right - 22, tabBounds.Top + Math.Max(2, (tabBounds.Height - 18) / 2), 18, 18);
         }
 
-        private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
+        private static GraphicsPath TerminalTabPath(Rectangle bounds, int radius, int shoulder)
         {
-            var diameter = radius * 2;
+            var left = bounds.Left;
+            var top = bounds.Top;
+            var right = bounds.Right;
+            var bottom = bounds.Bottom;
+            var bodyLeft = left + shoulder;
+            var bodyRight = right - shoulder;
             var path = new GraphicsPath();
-            path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
-            path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
-            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-            path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+            path.StartFigure();
+            path.AddLine(bodyLeft + radius, top, bodyRight - radius, top);
+            path.AddBezier(bodyRight - radius, top, bodyRight - 4, top,
+                bodyRight, top + 4, bodyRight, top + radius);
+            path.AddLine(bodyRight, top + radius, bodyRight, bottom - shoulder);
+            path.AddBezier(bodyRight, bottom - shoulder, bodyRight, bottom - 2,
+                right - 3, bottom, right, bottom);
+            path.AddLine(right, bottom, left, bottom);
+            path.AddBezier(left, bottom, left + 3, bottom,
+                bodyLeft, bottom - 2, bodyLeft, bottom - shoulder);
+            path.AddLine(bodyLeft, bottom - shoulder, bodyLeft, top + radius);
+            path.AddBezier(bodyLeft, top + radius, bodyLeft, top + 4,
+                bodyLeft + 4, top, bodyLeft + radius, top);
             path.CloseFigure();
             return path;
         }
