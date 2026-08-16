@@ -597,13 +597,13 @@ namespace CmdsManager.Tests
 
                     var elapsed = Stopwatch.StartNew();
                     RichTextBox output = null;
-                    TabControl tabs = null;
+                    TerminalTabStrip tabs = null;
                     while (elapsed.Elapsed < TimeSpan.FromSeconds(5))
                     {
                         System.Windows.Forms.Application.DoEvents();
-                        tabs = console.Controls.OfType<TabControl>().FirstOrDefault();
-                        if (tabs != null && tabs.TabPages.Count > 0)
-                            output = tabs.TabPages[0].Controls.OfType<RichTextBox>().FirstOrDefault();
+                        tabs = FindControl<TerminalTabStrip>(console);
+                        output = AllControls(console).OfType<RichTextBox>()
+                            .FirstOrDefault(control => processId.Equals(control.Tag));
                         if (output != null && output.Text.Contains("строка-19999")) break;
                         Thread.Sleep(10);
                     }
@@ -612,29 +612,48 @@ namespace CmdsManager.Tests
                     Assert(!output.Text.Contains("[4242 OUT]"), "console text has no PID OUT prefix");
                     Assert(output.TextLength <= 200000, "console history is bounded");
                     Assert(Math.Abs(output.Font.SizeInPoints - 12f) < 0.1f, "configured console font size is applied");
-                    Assert(tabs.TabPages[0].Text.StartsWith("● ", StringComparison.Ordinal), "running console tab has a filled activity marker");
-                    Assert(tabs.TabPages[0].Text.Contains(text["Console.Running"]), "running console tab has localized status text");
-                    Assert(tabs.ItemSize.Height >= 28 && tabs.Font.Name == "Segoe UI",
-                        "console tabs use the modernized taller Segoe UI presentation");
-                    Equal(TabAppearance.FlatButtons, tabs.Appearance,
-                        "console tabs suppress the classic framed TabControl page");
-                    Assert(tabs.DisplayRectangle.Left == 0 && tabs.DisplayRectangle.Width == tabs.ClientSize.Width &&
-                        tabs.DisplayRectangle.Top == tabs.GetTabRect(0).Bottom,
-                        "terminal tab content joins the selected tab without a classic border gap");
-                    Equal(Padding.Empty, tabs.TabPages[0].Padding,
-                        "console content fills the terminal page edge to edge");
-                    var tabPathFactory = typeof(ConsoleTabsControl).GetMethod("TerminalTabPath",
+                    Assert(tabs.IsTabRunning(0), "running console tab has a filled activity marker");
+                    Assert(tabs.GetTabText(0).Contains(text["Console.Running"]),
+                        "running console tab has localized status text");
+                    Assert(tabs.Height >= 40 && tabs.Font.Name == "Segoe UI",
+                        "console tabs use the taller Segoe UI terminal strip");
+                    Assert(!AllControls(console).OfType<TabControl>().Any(),
+                        "console host has no native TabControl button surface");
+                    Assert(tabs.Parent == output.Parent.Parent && tabs.Bottom == output.Parent.Top,
+                        "custom tab strip joins the content host without a border gap");
+                    var tabBounds = tabs.GetTabBounds(0);
+                    var closeBounds = tabs.GetCloseBounds(0);
+                    Assert(tabBounds.Contains(closeBounds) && tabBounds.Right - closeBounds.Right >= 8,
+                        "close glyph remains inside the visible tab body");
+                    var tabPathFactory = typeof(TerminalTabStrip).GetMethod("CreateTabPath",
                         System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                     Assert(tabPathFactory != null, "terminal tab shape renderer exists");
                     using (var tabPath = (System.Drawing.Drawing2D.GraphicsPath)tabPathFactory.Invoke(null,
-                        new object[] { new Rectangle(0, 0, 180, 36), 10, 7 }))
+                        new object[] { new Rectangle(0, 8, 180, 35) }))
                     {
                         Assert(tabPath.PathTypes.Any(type => (type & 3) ==
                             (byte)System.Drawing.Drawing2D.PathPointType.Bezier3),
                             "terminal tab silhouette uses curved corners instead of a rectangle");
                         Assert(tabPath.PathPoints.Any(point => Math.Abs(point.X) < 0.1f &&
-                            Math.Abs(point.Y - 36f) < 0.1f),
+                            Math.Abs(point.Y - 43f) < 0.1f),
                             "terminal tab silhouette has a flared lower shoulder");
+                    }
+                    using (var standaloneTabs = new TerminalTabStrip { Size = new Size(600, 44) })
+                    {
+                        standaloneTabs.CreateControl();
+                        standaloneTabs.AddTab(7001, "Close test", "Close test", true);
+                        var closedKey = -1;
+                        standaloneTabs.CloseRequested += (sender, args) => closedKey = args.Key;
+                        var standaloneClose = standaloneTabs.GetCloseBounds(0);
+                        var mouseDown = typeof(TerminalTabStrip).GetMethod("OnMouseDown",
+                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        mouseDown.Invoke(standaloneTabs, new object[]
+                        {
+                            new MouseEventArgs(MouseButtons.Left, 1,
+                                standaloneClose.Left + standaloneClose.Width / 2,
+                                standaloneClose.Top + standaloneClose.Height / 2, 0)
+                        });
+                        Equal(7001, closedKey, "close glyph hit-test belongs to its tab");
                     }
 
                     var menu = tabs.ContextMenuStrip;
@@ -653,10 +672,15 @@ namespace CmdsManager.Tests
                         windowsProcessId, DateTime.Now, true, null, ScriptOutputEncoding.Oem));
                     console.EnqueueOutput(new ScriptOutputEventArgs(windowsScriptId, windowsProcessId,
                         OutputEncodingDecoder.Decode(windowsBytes, ScriptOutputEncoding.Oem), false, windowsBytes));
-                    Assert(WaitWithUi(() => tabs.TabPages.Count == 2 &&
-                        tabs.SelectedTab.Controls.OfType<RichTextBox>().Single().TextLength > 0, TimeSpan.FromSeconds(2)),
+                    RichTextBox windowsOutput = null;
+                    Assert(WaitWithUi(() =>
+                    {
+                        windowsOutput = AllControls(console).OfType<RichTextBox>()
+                            .FirstOrDefault(control => windowsProcessId.Equals(control.Tag));
+                        return tabs.TabCount == 2 && tabs.SelectedKey == windowsProcessId &&
+                            windowsOutput != null && windowsOutput.TextLength > 0;
+                    }, TimeSpan.FromSeconds(2)),
                         "raw output appears in a second console tab");
-                    var windowsOutput = tabs.SelectedTab.Controls.OfType<RichTextBox>().Single();
                     Assert(!windowsOutput.Text.Contains(windowsPhrase), "forced OEM initially shows Windows-1251 bytes incorrectly");
                     var encodingMenu = menu.Items.OfType<ToolStripMenuItem>()
                         .Single(item => item.Text == text["Console.Encoding"]);
@@ -673,14 +697,15 @@ namespace CmdsManager.Tests
                     console.EnqueueExited(new ScriptInstanceEventArgs(scriptId, "Fast output", processId, DateTime.Now, true, 0));
                     elapsed.Restart();
                     while (elapsed.Elapsed < TimeSpan.FromSeconds(2) &&
-                        !tabs.TabPages[0].Text.StartsWith("○ ", StringComparison.Ordinal))
+                        tabs.IsTabRunning(0))
                     {
                         System.Windows.Forms.Application.DoEvents();
                         Thread.Sleep(10);
                     }
 
-                    Assert(tabs.TabPages[0].Text.StartsWith("○ ", StringComparison.Ordinal), "exited console tab has an inactive marker");
-                    Assert(tabs.TabPages[0].Text.Contains(text.Get("Console.Exited", 0)), "exited console tab has the exit code");
+                    Assert(!tabs.IsTabRunning(0), "exited console tab has an inactive marker");
+                    Assert(tabs.GetTabText(0).Contains(text.Get("Console.Exited", 0)),
+                        "exited console tab has the exit code");
                 }
             });
         }
@@ -814,39 +839,47 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     var console = FindControl<ConsoleTabsControl>(form);
-                    var tabs = FindControl<TabControl>(console);
+                    var tabs = FindControl<TerminalTabStrip>(console);
                     var grid = FindControl<DataGridView>(form);
                     supervisor.Start(parent, string.Empty);
-                    Assert(WaitWithUi(() => tabs.TabPages.Count == 1, TimeSpan.FromSeconds(4)), "parent console tab appears");
+                    Assert(WaitWithUi(() => tabs.TabCount == 1, TimeSpan.FromSeconds(4)), "parent console tab appears");
 
                     form.RunManagedChild(directory, new[]
                     {
                         "RuStore GPlay Bridge", "/D", directory, "cmd", "/k", childPath
                     });
-                    Assert(WaitWithUi(() => tabs.TabPages.Count == 2 &&
-                        tabs.TabPages.Cast<TabPage>().Any(page => page.Text.Contains("RuStore GPlay Bridge")), TimeSpan.FromSeconds(4)),
+                    Assert(WaitWithUi(() => tabs.TabCount == 2 &&
+                        Enumerable.Range(0, tabs.TabCount).Any(index =>
+                            tabs.GetTabText(index).Contains("RuStore GPlay Bridge")), TimeSpan.FromSeconds(4)),
                         "START cmd /k child appears in a neighboring tab");
-                    var childPage = tabs.TabPages.Cast<TabPage>().First(page => page.Text.Contains("RuStore GPlay Bridge"));
-                    Assert(WaitWithUi(() => childPage.Controls.OfType<RichTextBox>().Any(output => output.Text.Contains("managed-child-output")),
+                    var childIndex = Enumerable.Range(0, tabs.TabCount).First(index =>
+                        tabs.GetTabText(index).Contains("RuStore GPlay Bridge"));
+                    var childProcessId = tabs.GetTabKey(childIndex);
+                    var childOutput = AllControls(console).OfType<RichTextBox>()
+                        .Single(output => childProcessId.Equals(output.Tag));
+                    Assert(WaitWithUi(() => childOutput.Text.Contains("managed-child-output"),
                         TimeSpan.FromSeconds(4)), "managed child output is captured in its own tab");
-                    Equal(TabDrawMode.OwnerDrawFixed, tabs.DrawMode, "console tabs draw a close button");
+                    Assert(!AllControls(console).OfType<TabControl>().Any(),
+                        "managed child tabs use the custom borderless terminal host");
 
                     grid.ClearSelection();
                     var parentRow = grid.Rows.Cast<DataGridViewRow>().First(row => parent.Id.Equals(row.Tag));
                     parentRow.Selected = true;
                     grid.CurrentCell = parentRow.Cells["Name"];
                     System.Windows.Forms.Application.DoEvents();
-                    Assert(tabs.SelectedTab.Text.Contains("Parent script"), "selecting a grid row selects its console tab");
+                    Assert(tabs.GetTabText(tabs.SelectedIndex).Contains("Parent script"),
+                        "selecting a grid row selects its console tab");
 
                     ConsoleTabCloseRequestedEventArgs closeRequest = null;
                     console.CloseRequested += (sender, args) => closeRequest = args;
-                    tabs.SelectedTab = childPage;
+                    tabs.SelectTab(childProcessId);
                     var closeItem = tabs.ContextMenuStrip.Items.OfType<ToolStripMenuItem>().Last();
                     closeItem.PerformClick();
                     Assert(closeRequest != null && closeRequest.IsRunning, "closing a running tab requests process stop");
                     Assert(WaitWithUi(() => !supervisor.IsRunning(closeRequest.ScriptId), TimeSpan.FromSeconds(5)),
                         "closing the child tab stops its exact managed process");
-                    Assert(!tabs.TabPages.Cast<TabPage>().Contains(childPage), "closed child tab is removed");
+                    Assert(!Enumerable.Range(0, tabs.TabCount).Any(index => tabs.GetTabKey(index) == childProcessId),
+                        "closed child tab is removed");
 
                     supervisor.StopAsync(parent.Id).GetAwaiter().GetResult();
                     Assert(SpinWait.SpinUntil(() => !supervisor.IsRunning(parent.Id), TimeSpan.FromSeconds(5)), "parent script stops after tab test");

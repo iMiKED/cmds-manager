@@ -81,7 +81,7 @@ foreach ($file in $files) {
 }
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'README.md') -Destination (Join-Path $resolvedStagingRoot 'README.md')
 
-$zipPath = Join-Path $artifactsRoot 'CmdsManager-portable-0.4.1-win-x64.zip'
+$zipPath = Join-Path $artifactsRoot 'CmdsManager-portable-0.4.2-win-x64.zip'
 $resolvedZipPath = [System.IO.Path]::GetFullPath($zipPath)
 if (-not $resolvedZipPath.StartsWith($expectedArtifactsRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Unsafe ZIP output path: $resolvedZipPath"

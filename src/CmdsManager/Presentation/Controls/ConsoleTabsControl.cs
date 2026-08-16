@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -21,9 +20,6 @@ namespace CmdsManager.Presentation.Controls
         private const int TrimToCharacters = 150000;
         private const int MaxEventsPerTick = 50000;
         private static readonly Color ConsoleBackground = Color.FromArgb(28, 28, 28);
-        private static readonly Color TabStripBackground = Color.FromArgb(236, 238, 241);
-        private static readonly Color InactiveTabBackground = Color.FromArgb(248, 249, 251);
-        private static readonly Color HoverTabBackground = Color.FromArgb(222, 229, 238);
 
         private enum ConsoleEventKind
         {
@@ -58,24 +54,7 @@ namespace CmdsManager.Presentation.Controls
             internal int HistoryUnits { get; set; }
             internal bool WordWrap { get; set; }
             internal Font CustomFont { get; set; }
-            internal TabPage Page { get; set; }
             internal RichTextBox Output { get; set; }
-        }
-
-        private sealed class TerminalTabControl : TabControl
-        {
-            public override Rectangle DisplayRectangle
-            {
-                get
-                {
-                    if (TabCount == 0) return base.DisplayRectangle;
-                    var headerBottom = GetTabRect(0).Bottom;
-                    return headerBottom <= 0
-                        ? base.DisplayRectangle
-                        : new Rectangle(0, headerBottom, ClientSize.Width,
-                            Math.Max(0, ClientSize.Height - headerBottom));
-                }
-            }
         }
 
         private readonly LocalizationService _text;
@@ -83,11 +62,28 @@ namespace CmdsManager.Presentation.Controls
         private readonly ConcurrentQueue<ConsoleEvent> _events = new ConcurrentQueue<ConsoleEvent>();
         private readonly Dictionary<int, ConsoleSession> _sessions = new Dictionary<int, ConsoleSession>();
         private readonly HashSet<int> _suppressedProcesses = new HashSet<int>();
-        private readonly TabControl _tabs = new TerminalTabControl
+        private readonly TerminalTabStrip _tabStrip = new TerminalTabStrip
         {
             Dock = DockStyle.Fill,
-            ShowToolTips = true,
-            BackColor = TabStripBackground
+            Margin = Padding.Empty,
+            ActiveTabColor = ConsoleBackground
+        };
+        private readonly Panel _contentHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = ConsoleBackground
+        };
+        private readonly TableLayoutPanel _tabLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = ConsoleBackground,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.None
         };
         private readonly Label _empty = new Label
         {
@@ -108,10 +104,7 @@ namespace CmdsManager.Presentation.Controls
         private readonly ToolStripMenuItem _closeItem = new ToolStripMenuItem();
         private readonly Dictionary<ScriptOutputEncoding, ToolStripMenuItem> _encodingItems =
             new Dictionary<ScriptOutputEncoding, ToolStripMenuItem>();
-        private readonly Font _tabFont = new Font("Segoe UI", 9f, FontStyle.Regular, GraphicsUnit.Point);
         private Font _consoleFont;
-        private int _hotTabIndex = -1;
-        private int _hotCloseIndex = -1;
 
         public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings)
         {
@@ -146,18 +139,16 @@ namespace CmdsManager.Presentation.Controls
             _clearItem.Click += (sender, args) => ClearSelectedTab();
             _closeItem.Click += (sender, args) => CloseSelectedTab();
 
-            _tabs.ContextMenuStrip = _menu;
-            _tabs.Appearance = TabAppearance.FlatButtons;
-            _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
-            _tabs.Padding = new Point(20, 6);
-            _tabs.ItemSize = new Size(0, 36);
-            _tabs.Font = _tabFont;
-            _tabs.DrawItem += DrawTab;
-            _tabs.MouseDown += HandleTabMouseDown;
-            _tabs.MouseMove += HandleTabMouseMove;
-            _tabs.MouseLeave += (sender, args) => SetHotTab(-1, -1);
+            _tabStrip.ContextMenuStrip = _menu;
+            _tabStrip.SelectedTabChanged += HandleSelectedTabChanged;
+            _tabStrip.CloseRequested += HandleTabCloseRequested;
+            _tabLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            _tabLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44f));
+            _tabLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            _tabLayout.Controls.Add(_tabStrip, 0, 0);
+            _tabLayout.Controls.Add(_contentHost, 0, 1);
 
-            Controls.Add(_tabs);
+            Controls.Add(_tabLayout);
             Controls.Add(_empty);
             _empty.BringToFront();
 
@@ -229,7 +220,7 @@ namespace CmdsManager.Presentation.Controls
                 .OrderBy(item => item.ExitCode.HasValue)
                 .ThenByDescending(item => item.StartedAt)
                 .FirstOrDefault();
-            if (session != null) _tabs.SelectedTab = session.Page;
+            if (session != null) _tabStrip.SelectTab(session.ProcessId);
         }
 
         protected override void Dispose(bool disposing)
@@ -242,7 +233,6 @@ namespace CmdsManager.Presentation.Controls
                 foreach (var session in _sessions.Values) session.CustomFont?.Dispose();
                 _menu.Dispose();
                 _consoleFont?.Dispose();
-                _tabFont.Dispose();
             }
 
             base.Dispose(disposing);
@@ -264,7 +254,7 @@ namespace CmdsManager.Presentation.Controls
                     _suppressedProcesses.Remove(item.Instance.ProcessId);
                     var started = EnsureSession(item.Instance.ProcessId, item.Instance.ScriptId,
                         item.Instance.ScriptName, item.Instance.StartedAt, item.Instance.OutputEncoding);
-                    _tabs.SelectedTab = started.Page;
+                    _tabStrip.SelectTab(started.ProcessId);
                     continue;
                 }
 
@@ -346,10 +336,10 @@ namespace CmdsManager.Presentation.Controls
                 HideSelection = false,
                 ScrollBars = RichTextBoxScrollBars.Both,
                 Font = _consoleFont ?? new Font(FontFamily.GenericMonospace, 10f),
-                ContextMenuStrip = _menu
+                ContextMenuStrip = _menu,
+                Tag = processId,
+                Visible = false
             };
-            var page = new TabPage { BackColor = output.BackColor, Padding = Padding.Empty };
-            page.Controls.Add(output);
             var session = new ConsoleSession
             {
                 ScriptId = scriptId,
@@ -357,12 +347,12 @@ namespace CmdsManager.Presentation.Controls
                 ProcessId = processId,
                 StartedAt = startedAt ?? DateTime.Now,
                 OutputEncoding = outputEncoding,
-                Page = page,
                 Output = output
             };
             _sessions[processId] = session;
+            _contentHost.Controls.Add(output);
+            _tabStrip.AddTab(processId, string.Empty, string.Empty, true);
             UpdateTabTitle(session);
-            _tabs.TabPages.Add(page);
             return session;
         }
 
@@ -549,160 +539,37 @@ namespace CmdsManager.Presentation.Controls
             var isRunning = !session.ExitCode.HasValue;
             _suppressedProcesses.Add(session.ProcessId);
             _sessions.Remove(session.ProcessId);
-            _tabs.TabPages.Remove(session.Page);
-            session.Page.Dispose();
+            _contentHost.Controls.Remove(session.Output);
+            session.Output.Dispose();
+            _tabStrip.RemoveTab(session.ProcessId);
             session.CustomFont?.Dispose();
             UpdateEmptyState();
             CloseRequested?.Invoke(this,
                 new ConsoleTabCloseRequestedEventArgs(session.ScriptId, session.ProcessId, isRunning));
         }
 
-        private void DrawTab(object sender, DrawItemEventArgs args)
+        private void HandleSelectedTabChanged(object sender, TerminalTabEventArgs args)
         {
-            if (args.Index < 0 || args.Index >= _tabs.TabPages.Count) return;
-            var tabBounds = _tabs.GetTabRect(args.Index);
-            if (args.Index == 0)
+            foreach (var session in _sessions.Values)
             {
-                using (var strip = new SolidBrush(TabStripBackground))
-                    args.Graphics.FillRectangle(strip, 0, 0, _tabs.ClientSize.Width, tabBounds.Bottom + 2);
-            }
-
-            var bounds = Rectangle.FromLTRB(tabBounds.Left + 1, tabBounds.Top + 2,
-                tabBounds.Right - 1, tabBounds.Bottom);
-            var selected = args.Index == _tabs.SelectedIndex;
-            var hot = args.Index == _hotTabIndex;
-            var background = selected
-                ? ConsoleBackground
-                : hot ? HoverTabBackground : InactiveTabBackground;
-            var border = hot ? Color.FromArgb(177, 190, 207) : Color.FromArgb(210, 215, 222);
-
-            var previousSmoothing = args.Graphics.SmoothingMode;
-            args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var path = TerminalTabPath(bounds, selected ? 10 : 8, selected ? 7 : 5))
-            using (var brush = new SolidBrush(background))
-            {
-                args.Graphics.FillPath(brush, path);
-                if (!selected && hot)
-                {
-                    using (var pen = new Pen(border)) args.Graphics.DrawPath(pen, path);
-                }
-            }
-            if (!selected && !hot)
-            {
-                using (var separator = new Pen(Color.FromArgb(205, 209, 215)))
-                    args.Graphics.DrawLine(separator, bounds.Right - 2, bounds.Top + 8,
-                        bounds.Right - 2, bounds.Bottom - 7);
-            }
-
-            var pageText = _tabs.TabPages[args.Index].Text ?? string.Empty;
-            var running = pageText.StartsWith("● ", StringComparison.Ordinal);
-            var displayText = pageText.Length > 2 && (running || pageText.StartsWith("○ ", StringComparison.Ordinal))
-                ? pageText.Substring(2)
-                : pageText;
-            using (var status = new SolidBrush(running
-                ? Color.FromArgb(42, 190, 107)
-                : selected ? Color.FromArgb(180, 188, 198) : Color.FromArgb(125, 135, 145)))
-                args.Graphics.FillEllipse(status, bounds.Left + 12, bounds.Top + (bounds.Height - 8) / 2, 8, 8);
-
-            var closeBounds = CloseBounds(tabBounds);
-            if (args.Index == _hotCloseIndex)
-            {
-                using (var closeBackground = new SolidBrush(selected
-                    ? Color.FromArgb(64, 255, 255, 255)
-                    : Color.FromArgb(255, 225, 225)))
-                    args.Graphics.FillEllipse(closeBackground, closeBounds);
-            }
-            var closeColor = args.Index == _hotCloseIndex
-                ? selected ? Color.White : Color.Firebrick
-                : selected ? Color.FromArgb(225, 230, 236) : Color.FromArgb(105, 110, 118);
-            using (var closePen = new Pen(closeColor, 1.5f))
-            {
-                args.Graphics.DrawLine(closePen, closeBounds.Left + 5, closeBounds.Top + 5,
-                    closeBounds.Right - 5, closeBounds.Bottom - 5);
-                args.Graphics.DrawLine(closePen, closeBounds.Right - 5, closeBounds.Top + 5,
-                    closeBounds.Left + 5, closeBounds.Bottom - 5);
-            }
-            args.Graphics.SmoothingMode = previousSmoothing;
-
-            var textBounds = new Rectangle(bounds.Left + 27, bounds.Top + 1,
-                Math.Max(0, closeBounds.Left - bounds.Left - 30), bounds.Height - 2);
-            TextRenderer.DrawText(args.Graphics, displayText, _tabFont, textBounds,
-                selected ? Color.FromArgb(245, 247, 250) : Color.FromArgb(42, 48, 56),
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        }
-
-        private void HandleTabMouseDown(object sender, MouseEventArgs args)
-        {
-            var index = TabIndexAt(args.Location);
-            if (index < 0) return;
-            _tabs.SelectedIndex = index;
-            if (args.Button == MouseButtons.Left && CloseBounds(_tabs.GetTabRect(index)).Contains(args.Location))
-            {
-                var session = SelectedSession;
-                if (session != null) CloseSession(session);
+                var selected = session.ProcessId == args.Key;
+                session.Output.Visible = selected;
+                if (selected) session.Output.BringToFront();
             }
         }
 
-        private void HandleTabMouseMove(object sender, MouseEventArgs args)
+        private void HandleTabCloseRequested(object sender, TerminalTabEventArgs args)
         {
-            var index = TabIndexAt(args.Location);
-            var closeIndex = index >= 0 && CloseBounds(_tabs.GetTabRect(index)).Contains(args.Location) ? index : -1;
-            SetHotTab(index, closeIndex);
-        }
-
-        private int TabIndexAt(Point location)
-        {
-            for (var index = 0; index < _tabs.TabPages.Count; index++)
-                if (_tabs.GetTabRect(index).Contains(location)) return index;
-            return -1;
-        }
-
-        private void SetHotTab(int tabIndex, int closeIndex)
-        {
-            if (_hotTabIndex == tabIndex && _hotCloseIndex == closeIndex) return;
-            _hotTabIndex = tabIndex;
-            _hotCloseIndex = closeIndex;
-            _tabs.Invalidate();
-        }
-
-        private static Rectangle CloseBounds(Rectangle tabBounds)
-        {
-            return new Rectangle(tabBounds.Right - 22, tabBounds.Top + Math.Max(2, (tabBounds.Height - 18) / 2), 18, 18);
-        }
-
-        private static GraphicsPath TerminalTabPath(Rectangle bounds, int radius, int shoulder)
-        {
-            var left = bounds.Left;
-            var top = bounds.Top;
-            var right = bounds.Right;
-            var bottom = bounds.Bottom;
-            var bodyLeft = left + shoulder;
-            var bodyRight = right - shoulder;
-            var path = new GraphicsPath();
-            path.StartFigure();
-            path.AddLine(bodyLeft + radius, top, bodyRight - radius, top);
-            path.AddBezier(bodyRight - radius, top, bodyRight - 4, top,
-                bodyRight, top + 4, bodyRight, top + radius);
-            path.AddLine(bodyRight, top + radius, bodyRight, bottom - shoulder);
-            path.AddBezier(bodyRight, bottom - shoulder, bodyRight, bottom - 2,
-                right - 3, bottom, right, bottom);
-            path.AddLine(right, bottom, left, bottom);
-            path.AddBezier(left, bottom, left + 3, bottom,
-                bodyLeft, bottom - 2, bodyLeft, bottom - shoulder);
-            path.AddLine(bodyLeft, bottom - shoulder, bodyLeft, top + radius);
-            path.AddBezier(bodyLeft, top + radius, bodyLeft, top + 4,
-                bodyLeft + 4, top, bodyLeft + radius, top);
-            path.CloseFigure();
-            return path;
+            ConsoleSession session;
+            if (_sessions.TryGetValue(args.Key, out session)) CloseSession(session);
         }
 
         private ConsoleSession SelectedSession
         {
             get
             {
-                var page = _tabs.SelectedTab;
-                return page == null ? null : _sessions.Values.FirstOrDefault(item => item.Page == page);
+                ConsoleSession session;
+                return _sessions.TryGetValue(_tabStrip.SelectedKey, out session) ? session : null;
             }
         }
 
@@ -739,17 +606,18 @@ namespace CmdsManager.Presentation.Controls
             var status = session.ExitCode.HasValue
                 ? _text.Get("Console.Exited", session.ExitCode.Value)
                 : _text["Console.Running"];
-            session.Page.Text = (session.ExitCode.HasValue ? "○ " : "● ") +
-                name + " [" + session.ProcessId + "] · " + status;
-            session.Page.ToolTipText = (session.ScriptName ?? string.Empty) +
-                " [" + session.ProcessId + "] · " + status;
-            _tabs.Invalidate();
+            _tabStrip.UpdateTab(session.ProcessId,
+                name + " [" + session.ProcessId + "] · " + status,
+                (session.ScriptName ?? string.Empty) + " [" + session.ProcessId + "] · " + status,
+                !session.ExitCode.HasValue);
         }
 
         private void UpdateEmptyState()
         {
-            _empty.Visible = _tabs.TabPages.Count == 0;
+            _empty.Visible = _tabStrip.TabCount == 0;
+            _tabLayout.Visible = !_empty.Visible;
             if (_empty.Visible) _empty.BringToFront();
+            else _tabLayout.BringToFront();
         }
     }
 }
