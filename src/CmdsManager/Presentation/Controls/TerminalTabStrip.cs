@@ -18,7 +18,7 @@ namespace CmdsManager.Presentation.Controls
 
     public sealed class TerminalTabStrip : Control
     {
-        private const int TopMargin = 10;
+        private const int TopMargin = 4;
         private const int LeftMargin = 2;
         private const int TabWing = 8;
         private const int TabRadius = 8;
@@ -61,8 +61,8 @@ namespace CmdsManager.Presentation.Controls
                 ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.UserPaint, true);
             DoubleBuffered = true;
             TabStop = true;
-            Height = 44;
-            MinimumSize = new Size(0, 40);
+            Height = 40;
+            MinimumSize = new Size(0, 36);
             Font = _ownedFont;
             BackColor = Color.FromArgb(243, 244, 246);
             InactiveTabColor = Color.FromArgb(252, 252, 253);

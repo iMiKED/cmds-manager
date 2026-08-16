@@ -9,6 +9,7 @@ using CmdsManager.Infrastructure.Execution;
 using CmdsManager.Infrastructure.Logging;
 using CmdsManager.Infrastructure.Startup;
 using CmdsManager.Infrastructure.Windows;
+using CmdsManager.Presentation;
 using CmdsManager.Presentation.Forms;
 using CmdsManager.Presentation.Tray;
 using WinFormsApplication = System.Windows.Forms.Application;
@@ -40,7 +41,8 @@ namespace CmdsManager
             }
             catch (Exception exception)
             {
-                MessageBox.Show(exception.Message, "CmdsManager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(exception.Message, ApplicationResources.DisplayName,
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -65,8 +67,8 @@ namespace CmdsManager
                 catch (Exception exception)
                 {
                     MessageBox.Show(
-                        "CmdsManager не удалось запустить.\n\n" + exception.Message,
-                        "CmdsManager",
+                        "Cmds Manager не удалось запустить.\n\n" + exception.Message,
+                        ApplicationResources.DisplayName,
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                 }
@@ -87,7 +89,7 @@ namespace CmdsManager
 
             using (var log = new SimpleFileLogger(logDirectory, configuration.Application.LogRetentionDays))
             {
-                log.Information("CmdsManager is starting.");
+                log.Information("Cmds Manager is starting.");
                 var startup = new RegistryStartupRegistration(WinFormsApplication.ExecutablePath);
                 if (!automaticallyStarted)
                 {
@@ -122,7 +124,7 @@ namespace CmdsManager
                     WinFormsApplication.Run(context);
                 }
 
-                log.Information("CmdsManager stopped.");
+                log.Information("Cmds Manager stopped.");
             }
         }
 

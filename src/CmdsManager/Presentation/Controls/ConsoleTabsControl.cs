@@ -159,7 +159,7 @@ namespace CmdsManager.Presentation.Controls
             _tabStrip.SelectedTabChanged += HandleSelectedTabChanged;
             _tabStrip.CloseRequested += HandleTabCloseRequested;
             _tabLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-            _tabLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44f));
+            _tabLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
             _tabLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
             _tabLayout.Controls.Add(_tabStrip, 0, 0);
             _tabLayout.Controls.Add(_contentHost, 0, 1);
@@ -817,7 +817,8 @@ namespace CmdsManager.Presentation.Controls
 
         private string DetachedWindowTitle(ConsoleSession session)
         {
-            return _text.Get("Console.DetachedTitle", session.ScriptName ?? string.Empty, session.ProcessId);
+            return _text.Get("Console.DetachedTitle", session.ScriptName ?? string.Empty, session.ProcessId,
+                ApplicationResources.WindowTitle);
         }
 
         private void UpdateEmptyState()

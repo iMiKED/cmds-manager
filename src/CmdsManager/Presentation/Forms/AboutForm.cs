@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Reflection;
 using System.Windows.Forms;
 using CmdsManager.Application;
 
@@ -26,12 +25,9 @@ namespace CmdsManager.Presentation.Forms
             ClientSize = new Size(570, 245);
             Icon = ApplicationResources.Icon;
 
-            var assembly = Assembly.GetExecutingAssembly();
-            var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                ?? assembly.GetName().Version?.ToString() ?? "-";
-            var title = InformationLabel("CmdsManager");
+            var title = InformationLabel(ApplicationResources.DisplayName);
             title.Font = new Font(Font.FontFamily, 18f, FontStyle.Bold, GraphicsUnit.Point);
-            var versionLabel = InformationLabel(text.Get("About.Version", version));
+            var versionLabel = InformationLabel(text.Get("About.Version", ApplicationResources.Version));
             versionLabel.ForeColor = Color.FromArgb(93, 103, 116);
             var description = InformationLabel(text["About.Description"]);
             description.MaximumSize = new Size(390, 0);

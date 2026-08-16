@@ -54,7 +54,7 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Console.Detach", "Отделить вкладку"), Pair("Console.Reattach", "Вернуть вкладку"),
                 Pair("Console.FullScreen", "На весь экран"), Pair("Console.MaximizePane", "Развернуть область консолей"),
                 Pair("Console.RestorePane", "Восстановить размер области консолей"),
-                Pair("Console.DetachedTitle", "{0} [{1}] — CmdsManager"),
+                Pair("Console.DetachedTitle", "{0} [{1}] — {2}"),
                 Pair("Console.CopyFailed", "Не удалось скопировать выделенный текст."), Pair("Console.SaveFailed", "Не удалось сохранить текст консоли."),
                 Pair("Console.SaveSelectionTitle", "Сохранение выделенного текста"), Pair("Console.SaveAllTitle", "Сохранение консоли"),
                 Pair("Console.TextFileFilter", "Текстовые файлы|*.txt|Все файлы|*.*"),
@@ -63,7 +63,7 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Script.File", "Файл"), Pair("Script.Enabled", "Запись активна"), Pair("Script.Interpreter", "Интерпретатор"),
                 Pair("Script.Arguments", "Аргументы"), Pair("Script.WorkingDirectory", "Рабочая папка"), Pair("Script.WindowMode", "Режим окна"),
                 Pair("Script.Capture", "Перехватывать stdout/stderr"), Pair("Script.Encoding", "Кодировка вывода"),
-                Pair("Script.Parallel", "Разрешить параллельные экземпляры"), Pair("Script.AutoStart", "Запускать при старте CmdsManager"),
+                Pair("Script.Parallel", "Разрешить параллельные экземпляры"), Pair("Script.AutoStart", "Запускать при старте Cmds Manager"),
                 Pair("Script.AutoStartOrder", "Порядок"), Pair("Script.AutoStartDelay", "Задержка, с"),
                 Pair("Script.StopPolicy", "Остановка"), Pair("Script.StopTimeout", "Таймаут, с"),
                 Pair("Script.Note", "Повышение прав не поддерживается. Удаление записи не удаляет файл."),
@@ -76,8 +76,8 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Script.ValidationTitle", "Проверка записи"), Pair("Script.FileMissing", "Файл скрипта не найден."),
                 Pair("Script.DirectoryMissing", "Рабочая папка не найдена."), Pair("Script.FileFilter", "Поддерживаемые скрипты|*.cmd;*.bat;*.ps1;*.vbs|Все файлы|*.*"),
                 Pair("Script.SelectFile", "Выберите скрипт"), Pair("Script.SelectDirectory", "Выберите рабочую папку"),
-                Pair("Settings.Title", "Настройки CmdsManager"), Pair("Settings.Tab.General", "Основное"), Pair("Settings.Tab.Tools", "Пути и журналы"),
-                Pair("Settings.StartWithWindows", "Запускать CmdsManager при входе в Windows"), Pair("Settings.StartMinimized", "При ручном старте скрывать в трей"),
+                Pair("Settings.Title", "Настройки Cmds Manager"), Pair("Settings.Tab.General", "Основное"), Pair("Settings.Tab.Tools", "Пути и журналы"),
+                Pair("Settings.StartWithWindows", "Запускать Cmds Manager при входе в Windows"), Pair("Settings.StartMinimized", "При ручном старте скрывать в трей"),
                 Pair("Settings.AutoStartScripts", "Запускать отмеченные скрипты при старте"), Pair("Settings.ConfirmDelete", "Подтверждать удаление записи"),
                 Pair("Settings.Language", "Язык"), Pair("Settings.ConsoleFont", "Шрифт консоли"), Pair("Settings.ChooseFont", "Выбрать…"),
                 Pair("Settings.Tab.Appearance", "Внешний вид"), Pair("Settings.ConsoleTextColor", "Текст консоли"),
@@ -93,8 +93,8 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("About.Title", "О программе"), Pair("About.Description", "Менеджер CMD, BAT, PowerShell и VBS-скриптов"), Pair("About.Version", "Версия {0}"),
                 Pair("About.Author", "Автор:"),
                 Pair("Tray.Toggle", "Открыть / скрыть"), Pair("Tray.AutoStartFailed", "Не удалось автоматически запустить скриптов: {0}. Откройте приложение для подробностей."),
-                Pair("Tray.ExitTitle", "Выход из CmdsManager"), Pair("Tray.ExitConfirm", "Все запущенные через CmdsManager скрипты будут остановлены. Выйти?"),
-                Pair("Tray.Exiting", "CmdsManager — завершение"), Pair("App.UiErrorTitle", "Ошибка CmdsManager")
+                Pair("Tray.ExitTitle", "Выход из Cmds Manager"), Pair("Tray.ExitConfirm", "Все запущенные через Cmds Manager скрипты будут остановлены. Выйти?"),
+                Pair("Tray.Exiting", "Cmds Manager — завершение"), Pair("App.UiErrorTitle", "Ошибка Cmds Manager")
             });
         }
 
@@ -128,14 +128,14 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Console.WordWrap", "Word wrap"), Pair("Console.CopyFailed", "Could not copy the selected text."),
                 Pair("Console.Detach", "Detach tab"), Pair("Console.Reattach", "Attach tab back"),
                 Pair("Console.FullScreen", "Full screen"), Pair("Console.MaximizePane", "Maximize console area"),
-                Pair("Console.RestorePane", "Restore console area"), Pair("Console.DetachedTitle", "{0} [{1}] — CmdsManager"),
+                Pair("Console.RestorePane", "Restore console area"), Pair("Console.DetachedTitle", "{0} [{1}] — {2}"),
                 Pair("Console.SaveFailed", "Could not save the console text."), Pair("Console.SaveSelectionTitle", "Save selected console text"),
                 Pair("Console.SaveAllTitle", "Save console contents"), Pair("Console.TextFileFilter", "Text files|*.txt|All files|*.*"),
                 Pair("Script.Title.Add", "Add script"), Pair("Script.Title.Edit", "Edit script"),
                 Pair("Script.Tab.General", "General"), Pair("Script.Tab.Launch", "Launch"), Pair("Script.Name", "Name"), Pair("Script.File", "File"), Pair("Script.Enabled", "Entry is enabled"),
                 Pair("Script.Interpreter", "Interpreter"), Pair("Script.Arguments", "Arguments"), Pair("Script.WorkingDirectory", "Working directory"), Pair("Script.WindowMode", "Window mode"),
                 Pair("Script.Capture", "Capture stdout/stderr"), Pair("Script.Encoding", "Output encoding"), Pair("Script.Parallel", "Allow parallel instances"),
-                Pair("Script.AutoStart", "Start with CmdsManager"), Pair("Script.AutoStartOrder", "Order"), Pair("Script.AutoStartDelay", "Delay, seconds"),
+                Pair("Script.AutoStart", "Start with Cmds Manager"), Pair("Script.AutoStartOrder", "Order"), Pair("Script.AutoStartDelay", "Delay, seconds"),
                 Pair("Script.StopPolicy", "Stop policy"), Pair("Script.StopTimeout", "Timeout, seconds"), Pair("Script.Note", "Elevation is not supported. Deleting an entry does not delete its file."),
                 Pair("Script.Window.Hidden", "Hidden"), Pair("Script.Window.Normal", "Normal"), Pair("Script.Window.Minimized", "Minimized"),
                 Pair("Script.Stop.Graceful", "Graceful, then force"), Pair("Script.Stop.Kill", "Force immediately"), Pair("Script.Interpreter.Auto", "Automatic"),
@@ -143,8 +143,8 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Script.Encoding.Utf8", "UTF-8"), Pair("Script.Encoding.Oem", "Windows OEM"), Pair("Script.Encoding.Windows1251", "Windows-1251"), Pair("Script.Encoding.Utf16", "UTF-16 LE"),
                 Pair("Script.ValidationTitle", "Validate entry"), Pair("Script.FileMissing", "Script file was not found."), Pair("Script.DirectoryMissing", "Working directory was not found."),
                 Pair("Script.FileFilter", "Supported scripts|*.cmd;*.bat;*.ps1;*.vbs|All files|*.*"), Pair("Script.SelectFile", "Select a script"), Pair("Script.SelectDirectory", "Select a working directory"),
-                Pair("Settings.Title", "CmdsManager settings"), Pair("Settings.Tab.General", "General"), Pair("Settings.Tab.Tools", "Paths and logs"),
-                Pair("Settings.StartWithWindows", "Start CmdsManager when signing in to Windows"), Pair("Settings.StartMinimized", "Hide to tray when started manually"),
+                Pair("Settings.Title", "Cmds Manager settings"), Pair("Settings.Tab.General", "General"), Pair("Settings.Tab.Tools", "Paths and logs"),
+                Pair("Settings.StartWithWindows", "Start Cmds Manager when signing in to Windows"), Pair("Settings.StartMinimized", "Hide to tray when started manually"),
                 Pair("Settings.AutoStartScripts", "Start selected scripts on launch"), Pair("Settings.ConfirmDelete", "Confirm entry deletion"), Pair("Settings.Language", "Language"),
                 Pair("Settings.ConsoleFont", "Console font"), Pair("Settings.ChooseFont", "Choose…"), Pair("Settings.Editor", "Editor"), Pair("Settings.EditorArguments", "Editor arguments"),
                 Pair("Settings.Tab.Appearance", "Appearance"), Pair("Settings.ConsoleTextColor", "Console text"),
@@ -158,8 +158,8 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("About.Title", "About"), Pair("About.Description", "Manager for CMD, BAT, PowerShell, and VBS scripts"), Pair("About.Version", "Version {0}"),
                 Pair("About.Author", "Author:"),
                 Pair("Tray.Toggle", "Open / hide"), Pair("Tray.AutoStartFailed", "Could not auto-start {0} script(s). Open the app for details."),
-                Pair("Tray.ExitTitle", "Exit CmdsManager"), Pair("Tray.ExitConfirm", "All scripts started by CmdsManager will be stopped. Exit?"),
-                Pair("Tray.Exiting", "CmdsManager — exiting"), Pair("App.UiErrorTitle", "CmdsManager error")
+                Pair("Tray.ExitTitle", "Exit Cmds Manager"), Pair("Tray.ExitConfirm", "All scripts started by Cmds Manager will be stopped. Exit?"),
+                Pair("Tray.Exiting", "Cmds Manager — exiting"), Pair("App.UiErrorTitle", "Cmds Manager error")
             });
         }
 

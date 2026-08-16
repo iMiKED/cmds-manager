@@ -7,10 +7,15 @@ namespace CmdsManager.Presentation
 {
     internal static class ApplicationResources
     {
+        internal const string DisplayName = "Cmds Manager";
         private const string IconResourceName = "CmdsManager.Assets.CmdsManager.ico";
         private static readonly Lazy<Icon> IconHolder = new Lazy<Icon>(LoadIcon);
 
         internal static Icon Icon => IconHolder.Value;
+        internal static string Version => Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "-";
+        internal static string WindowTitle => DisplayName + " " + Version;
 
         internal static Bitmap CreateIconBitmap(int size)
         {

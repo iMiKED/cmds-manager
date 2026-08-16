@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 5;
+        private const int CurrentVersion = 6;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -552,6 +552,49 @@ namespace CmdsManager.Infrastructure.Configuration
                 ReplaceUnmodifiedString(configuration.Localization, "en", "Script.AutoStartOrder",
                     "Auto-start order", "Order");
             }
+            if (loadedVersion < 6)
+            {
+                ReplaceBrandDefaults(configuration.Localization);
+            }
+        }
+
+        private static void ReplaceBrandDefaults(LocalizationSettings localization)
+        {
+            ReplaceUnmodifiedString(localization, "ru", "Console.DetachedTitle",
+                "{0} [{1}] — CmdsManager", "{0} [{1}] — {2}");
+            ReplaceUnmodifiedString(localization, "ru", "Script.AutoStart",
+                "Запускать при старте CmdsManager", "Запускать при старте Cmds Manager");
+            ReplaceUnmodifiedString(localization, "ru", "Settings.Title",
+                "Настройки CmdsManager", "Настройки Cmds Manager");
+            ReplaceUnmodifiedString(localization, "ru", "Settings.StartWithWindows",
+                "Запускать CmdsManager при входе в Windows", "Запускать Cmds Manager при входе в Windows");
+            ReplaceUnmodifiedString(localization, "ru", "Tray.ExitTitle",
+                "Выход из CmdsManager", "Выход из Cmds Manager");
+            ReplaceUnmodifiedString(localization, "ru", "Tray.ExitConfirm",
+                "Все запущенные через CmdsManager скрипты будут остановлены. Выйти?",
+                "Все запущенные через Cmds Manager скрипты будут остановлены. Выйти?");
+            ReplaceUnmodifiedString(localization, "ru", "Tray.Exiting",
+                "CmdsManager — завершение", "Cmds Manager — завершение");
+            ReplaceUnmodifiedString(localization, "ru", "App.UiErrorTitle",
+                "Ошибка CmdsManager", "Ошибка Cmds Manager");
+
+            ReplaceUnmodifiedString(localization, "en", "Console.DetachedTitle",
+                "{0} [{1}] — CmdsManager", "{0} [{1}] — {2}");
+            ReplaceUnmodifiedString(localization, "en", "Script.AutoStart",
+                "Start with CmdsManager", "Start with Cmds Manager");
+            ReplaceUnmodifiedString(localization, "en", "Settings.Title",
+                "CmdsManager settings", "Cmds Manager settings");
+            ReplaceUnmodifiedString(localization, "en", "Settings.StartWithWindows",
+                "Start CmdsManager when signing in to Windows", "Start Cmds Manager when signing in to Windows");
+            ReplaceUnmodifiedString(localization, "en", "Tray.ExitTitle",
+                "Exit CmdsManager", "Exit Cmds Manager");
+            ReplaceUnmodifiedString(localization, "en", "Tray.ExitConfirm",
+                "All scripts started by CmdsManager will be stopped. Exit?",
+                "All scripts started by Cmds Manager will be stopped. Exit?");
+            ReplaceUnmodifiedString(localization, "en", "Tray.Exiting",
+                "CmdsManager — exiting", "Cmds Manager — exiting");
+            ReplaceUnmodifiedString(localization, "en", "App.UiErrorTitle",
+                "CmdsManager error", "Cmds Manager error");
         }
 
         private static void ReplaceUnmodifiedString(LocalizationSettings localization, string language, string key,

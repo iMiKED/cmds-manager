@@ -63,7 +63,7 @@ namespace CmdsManager.Presentation.Forms
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _console = new ConsoleTabsControl(_text, () => Configuration.Application) { Dock = DockStyle.Fill };
 
-            Text = "CmdsManager";
+            Text = ApplicationResources.WindowTitle;
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(880, 520);
             Size = new Size(1120, 680);
@@ -811,7 +811,8 @@ namespace CmdsManager.Presentation.Forms
         private void ShowError(string message, Exception exception)
         {
             _log.Error(message, exception);
-            MessageBox.Show(this, message + Environment.NewLine + Environment.NewLine + exception.Message, "CmdsManager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, message + Environment.NewLine + Environment.NewLine + exception.Message,
+                ApplicationResources.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
         private static ToolStripButton Button(EventHandler click)

@@ -145,7 +145,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(5, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(6, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -155,11 +155,25 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(5, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal(6, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
                 Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
                 Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
                     "old default Russian Auto label is migrated");
+
+                var version5Path = Path.Combine(directory, "Version5.ini");
+                File.WriteAllText(version5Path,
+                    "[Application]\r\nConfigVersion=5\r\n" +
+                    "[Localization]\r\nLanguage=en\r\n" +
+                    "[Strings.en]\r\nSettings.Title=CmdsManager settings\r\n" +
+                    "[Strings.ru]\r\nSettings.Title=Настройки CmdsManager\r\n",
+                    new UTF8Encoding(false));
+                var version5 = new ConfigurationStore(version5Path).LoadOrCreate();
+                Equal(6, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
+                Equal("Cmds Manager settings", version5.Localization.Languages["en"]["Settings.Title"],
+                    "old default English brand is migrated");
+                Equal("Настройки Cmds Manager", version5.Localization.Languages["ru"]["Settings.Title"],
+                    "old default Russian brand is migrated");
             });
         }
 
@@ -510,7 +524,7 @@ namespace CmdsManager.Tests
                     Assert(script.ClientSize.Width <= 570 && script.ClientSize.Height <= 475,
                         "aligned script editor remains compact");
                     Equal("About", about.Text, "English About title comes from INI strings");
-                    Equal("CmdsManager settings", settings.Text, "English settings title comes from INI strings");
+                    Equal("Cmds Manager settings", settings.Text, "English settings title comes from INI strings");
                     Assert(!AllControls(settings).OfType<ScrollableControl>().Any(control => control.AutoScroll),
                         "settings dialog has no AutoScroll container");
                     Assert(!AllControls(script).OfType<ScrollableControl>().Any(control => control.AutoScroll),
@@ -560,7 +574,7 @@ namespace CmdsManager.Tests
                     var aboutIcon = AllControls(about).OfType<PictureBox>().Single();
                     Assert(aboutIcon.Image != null && aboutIcon.Image.Width == 128 && aboutIcon.Image.Height == 128,
                         "About uses the sharp 128 by 128 application icon frame");
-                    var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "CmdsManager");
+                    var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "Cmds Manager");
                     var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
                     var aboutDescription = AllControls(about).OfType<Label>().First(control => control.Text == text["About.Description"]);
                     var aboutLefts = new Control[] { aboutTitle, aboutVersion, aboutDescription, author }
@@ -665,6 +679,8 @@ namespace CmdsManager.Tests
                         "custom tab strip joins the content host without a border gap");
                     var tabBounds = tabs.GetTabBounds(0);
                     var closeBounds = tabs.GetCloseBounds(0);
+                    Assert(tabBounds.Top <= 4,
+                        "console tabs use only a small amount of space above their labels");
                     Assert(tabBounds.Contains(closeBounds) && tabBounds.Right - closeBounds.Right >= 8,
                         "close glyph remains inside the visible tab body");
                     Equal(64, tabs.InactiveTabColor.A, "inactive tab opacity is applied to the tab surface");
@@ -840,6 +856,8 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
+                    Equal("Cmds Manager 0.5.1", form.Text,
+                        "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
                     form.Show();

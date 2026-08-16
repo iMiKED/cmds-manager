@@ -45,7 +45,7 @@ namespace CmdsManager.Infrastructure.Startup
                 var command = ScriptCommandBuilder.QuoteWindowsArgument(_executablePath) + " --autostart";
                 if (command.Length > 260)
                 {
-                    throw new InvalidOperationException("The portable path is too long for the Windows Run registry entry. Move CmdsManager to a shorter path.");
+                    throw new InvalidOperationException("The portable path is too long for the Windows Run registry entry. Move Cmds Manager to a shorter path.");
                 }
 
                 key.SetValue(ValueName, command, RegistryValueKind.String);

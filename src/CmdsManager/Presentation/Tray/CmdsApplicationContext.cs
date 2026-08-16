@@ -51,7 +51,7 @@ namespace CmdsManager.Presentation.Tray
             _tray = new NotifyIcon
             {
                 Icon = ApplicationResources.Icon,
-                Text = "CmdsManager",
+                Text = ApplicationResources.WindowTitle,
                 ContextMenuStrip = menu,
                 Visible = true
             };
@@ -159,7 +159,8 @@ namespace CmdsManager.Presentation.Tray
                 catch (Exception) { failures++; }
             }
             if (failures > 0)
-                _tray.ShowBalloonTip(5000, "CmdsManager", _text.Get("Tray.AutoStartFailed", failures), ToolTipIcon.Warning);
+                _tray.ShowBalloonTip(5000, ApplicationResources.DisplayName,
+                    _text.Get("Tray.AutoStartFailed", failures), ToolTipIcon.Warning);
         }
 
         private async Task ExitApplicationAsync()
@@ -207,7 +208,7 @@ namespace CmdsManager.Presentation.Tray
 
         private static string NotifyText(string value)
         {
-            value = string.IsNullOrWhiteSpace(value) ? "CmdsManager" : value;
+            value = string.IsNullOrWhiteSpace(value) ? ApplicationResources.WindowTitle : value;
             return value.Length > 63 ? value.Substring(0, 63) : value;
         }
     }
