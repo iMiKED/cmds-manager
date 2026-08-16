@@ -24,6 +24,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly FluentComboBox _windowMode = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly FluentCheckBox _captureOutput = new FluentCheckBox();
         private readonly FluentComboBox _outputEncoding = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly FluentCheckBox _wordWrap = new FluentCheckBox();
         private readonly FluentCheckBox _allowParallel = new FluentCheckBox();
         private readonly FluentCheckBox _autoStart = new FluentCheckBox();
         private readonly FluentNumericUpDown _autoStartOrder = new FluentNumericUpDown { Minimum = -100000, Maximum = 100000, Width = 58, TextAlign = HorizontalAlignment.Right };
@@ -50,6 +51,7 @@ namespace CmdsManager.Presentation.Forms
 
             _enabled.Text = _text["Script.Enabled"];
             _captureOutput.Text = _text["Script.Capture"];
+            _wordWrap.Text = _text["Console.WordWrap"];
             _allowParallel.Text = _text["Script.Parallel"];
             _autoStart.Text = _text["Script.AutoStart"];
             FillCombo(_windowMode,
@@ -76,6 +78,7 @@ namespace CmdsManager.Presentation.Forms
             AddRow(content, _text["Script.StopPolicy"], _stopPolicy);
             AddRow(content, string.Empty, _captureOutput);
             AddRow(content, _text["Script.Encoding"], _outputEncoding);
+            AddRow(content, string.Empty, _wordWrap);
             AddRow(content, string.Empty, _allowParallel);
             AddRow(content, string.Empty, _autoStart);
             AddRow(content, string.Empty, CompactNumericControls());
@@ -114,6 +117,7 @@ namespace CmdsManager.Presentation.Forms
             _arguments.Text = model.Launch.Arguments;
             _workingDirectory.Text = model.Launch.WorkingDirectory;
             _captureOutput.Checked = model.Launch.CaptureOutput;
+            _wordWrap.Checked = model.Launch.WordWrap;
             _allowParallel.Checked = model.Launch.AllowParallelInstances;
             _autoStart.Checked = model.Launch.AutoStartWithApplication;
             _autoStartOrder.Value = Clamp(model.Launch.AutoStartOrder, _autoStartOrder.Minimum, _autoStartOrder.Maximum);
@@ -151,6 +155,7 @@ namespace CmdsManager.Presentation.Forms
                         WindowMode = GetValue(_windowMode, ScriptWindowMode.Hidden),
                         CaptureOutput = _captureOutput.Checked,
                         OutputEncoding = GetValue(_outputEncoding, ScriptOutputEncoding.Auto),
+                        WordWrap = _wordWrap.Checked,
                         AllowParallelInstances = _allowParallel.Checked,
                         AutoStartWithApplication = _autoStart.Checked,
                         AutoStartOrder = decimal.ToInt32(_autoStartOrder.Value),
@@ -230,6 +235,7 @@ namespace CmdsManager.Presentation.Forms
             if (wscript) _captureOutput.Checked = false;
             _captureOutput.Enabled = !wscript;
             _outputEncoding.Enabled = !wscript && _captureOutput.Checked;
+            _wordWrap.Enabled = !wscript && _captureOutput.Checked;
         }
 
         private static TableLayoutPanel CreateTable()

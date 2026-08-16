@@ -16,6 +16,18 @@ using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Presentation.Controls
 {
+    public sealed class ConsoleWordWrapChangedEventArgs : EventArgs
+    {
+        public ConsoleWordWrapChangedEventArgs(Guid scriptId, bool wordWrap)
+        {
+            ScriptId = scriptId;
+            WordWrap = wordWrap;
+        }
+
+        public Guid ScriptId { get; }
+        public bool WordWrap { get; }
+    }
+
     public sealed class ConsoleTabsControl : UserControl
     {
         private const int MaxCharactersPerTab = 200000;
@@ -63,6 +75,7 @@ namespace CmdsManager.Presentation.Controls
 
         private readonly LocalizationService _text;
         private readonly Func<ApplicationSettings> _settings;
+        private readonly Func<Guid, bool> _wordWrapForScript;
         private readonly ConcurrentQueue<ConsoleEvent> _events = new ConcurrentQueue<ConsoleEvent>();
         private readonly Dictionary<int, ConsoleSession> _sessions = new Dictionary<int, ConsoleSession>();
         private readonly HashSet<int> _suppressedProcesses = new HashSet<int>();
@@ -117,10 +130,12 @@ namespace CmdsManager.Presentation.Controls
         private Color _consoleBackground = DefaultConsoleBackground;
         private ApplicationTheme _applicationTheme = ApplicationTheme.System;
 
-        public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings)
+        public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings,
+            Func<Guid, bool> wordWrapForScript = null)
         {
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            _wordWrapForScript = wordWrapForScript ?? (scriptId => false);
 
             Tag = AppThemeManager.PreserveColorsTag;
             BackColor = DefaultConsoleBackground;
@@ -181,6 +196,14 @@ namespace CmdsManager.Presentation.Controls
 
         public event EventHandler<ConsoleTabCloseRequestedEventArgs> CloseRequested;
         public event EventHandler PaneMaximizeRequested;
+        public event EventHandler<ConsoleWordWrapChangedEventArgs> WordWrapChanged;
+
+        internal void ApplyWordWrap(IEnumerable<Guid> scriptIds, bool wordWrap)
+        {
+            var identifiers = new HashSet<Guid>(scriptIds ?? Enumerable.Empty<Guid>());
+            foreach (var session in _sessions.Values.Where(item => identifiers.Contains(item.ScriptId)))
+                SetWordWrap(session, wordWrap);
+        }
 
         internal void ApplyApplicationTheme(ApplicationTheme theme)
         {
@@ -434,17 +457,18 @@ namespace CmdsManager.Presentation.Controls
                 return existing;
             }
 
+            var wordWrap = _wordWrapForScript(scriptId);
             var output = new RichTextBox
             {
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
-                WordWrap = false,
+                WordWrap = wordWrap,
                 BackColor = _consoleBackground,
                 ForeColor = _consoleForeground,
                 BorderStyle = BorderStyle.None,
                 DetectUrls = true,
                 HideSelection = false,
-                ScrollBars = RichTextBoxScrollBars.Both,
+                ScrollBars = wordWrap ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both,
                 Font = _consoleFont ?? new Font(FontFamily.GenericMonospace, 10f),
                 ContextMenuStrip = _menu,
                 Tag = processId,
@@ -457,6 +481,7 @@ namespace CmdsManager.Presentation.Controls
                 ProcessId = processId,
                 StartedAt = startedAt ?? DateTime.Now,
                 OutputEncoding = outputEncoding,
+                WordWrap = wordWrap,
                 Output = output
             };
             _sessions[processId] = session;
@@ -629,9 +654,17 @@ namespace CmdsManager.Presentation.Controls
         {
             var session = MenuSession;
             if (session == null) return;
-            session.WordWrap = !session.WordWrap;
-            session.Output.WordWrap = session.WordWrap;
-            session.Output.ScrollBars = session.WordWrap ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
+            var wordWrap = !session.WordWrap;
+            foreach (var related in _sessions.Values.Where(item => item.ScriptId == session.ScriptId))
+                SetWordWrap(related, wordWrap);
+            WordWrapChanged?.Invoke(this, new ConsoleWordWrapChangedEventArgs(session.ScriptId, wordWrap));
+        }
+
+        private static void SetWordWrap(ConsoleSession session, bool wordWrap)
+        {
+            session.WordWrap = wordWrap;
+            session.Output.WordWrap = wordWrap;
+            session.Output.ScrollBars = wordWrap ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
         }
 
         private void ClearSelectedTab()

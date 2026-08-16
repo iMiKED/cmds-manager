@@ -60,6 +60,7 @@ namespace CmdsManager.Domain
         public string WorkingDirectory { get; set; } = string.Empty;
         public bool CaptureOutput { get; set; } = true;
         public ScriptOutputEncoding OutputEncoding { get; set; } = ScriptOutputEncoding.Auto;
+        public bool WordWrap { get; set; }
         public bool AllowParallelInstances { get; set; }
         public bool AutoStartWithApplication { get; set; }
         public int AutoStartOrder { get; set; } = 100;
@@ -91,7 +92,7 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 7;
+        public int ConfigVersion { get; set; } = 8;
         public ApplicationTheme Theme { get; set; } = ApplicationTheme.System;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
@@ -99,6 +100,12 @@ namespace CmdsManager.Domain
         public bool StartHiddenWhenAutoStarted { get; set; } = true;
         public bool AutoStartScripts { get; set; } = true;
         public bool ConfirmBeforeDelete { get; set; } = true;
+        public bool MainWindowPlacementSaved { get; set; }
+        public int MainWindowX { get; set; }
+        public int MainWindowY { get; set; }
+        public int MainWindowWidth { get; set; } = 1120;
+        public int MainWindowHeight { get; set; } = 680;
+        public bool MainWindowMaximized { get; set; }
         public string EditorPath { get; set; } = @"%SystemRoot%\System32\notepad.exe";
         public string EditorArguments { get; set; } = "\"{file}\"";
         public string LogLevel { get; set; } = "Information";

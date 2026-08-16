@@ -20,6 +20,7 @@ namespace CmdsManager
     {
         private sealed class ManagedStartInvocation
         {
+            internal Guid ParentScriptId { get; set; }
             internal string ParentWorkingDirectory { get; set; }
             internal string[] Arguments { get; set; }
         }
@@ -185,6 +186,9 @@ namespace CmdsManager
                         throw new ArgumentException("Для --managed-start-env не заданы параметры дочернего START.");
                     return new ManagedStartInvocation
                     {
+                        ParentScriptId = index + 1 < args.Length && Guid.TryParse(args[index + 1], out var parentScriptId)
+                            ? parentScriptId
+                            : Guid.Empty,
                         ParentWorkingDirectory = parent,
                         Arguments = SplitCmdArguments(line)
                     };
@@ -234,7 +238,11 @@ namespace CmdsManager
 
         private static string BuildManagedStartCommand(ManagedStartInvocation invocation)
         {
-            var values = new[] { invocation.ParentWorkingDirectory ?? string.Empty }
+            var values = new[]
+                {
+                    invocation.ParentScriptId.ToString("D"),
+                    invocation.ParentWorkingDirectory ?? string.Empty
+                }
                 .Concat(invocation.Arguments ?? new string[0]);
             return "START " + Convert.ToBase64String(Encoding.UTF8.GetBytes(string.Join("\0", values)));
         }

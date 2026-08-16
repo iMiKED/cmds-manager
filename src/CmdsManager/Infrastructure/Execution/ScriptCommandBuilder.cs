@@ -66,7 +66,7 @@ namespace CmdsManager.Infrastructure.Execution
             {
                 case ScriptInterpreter.Cmd:
                     spec.ExecutablePath = ResolveCmd();
-                    var executableScriptPath = PrepareCmdScript(scriptPath, spec);
+                    var executableScriptPath = PrepareCmdScript(scriptPath, script.Id, spec);
                     spec.Arguments = BuildCmdArguments(executableScriptPath, userArguments);
                     break;
                 case ScriptInterpreter.WindowsPowerShell:
@@ -96,14 +96,14 @@ namespace CmdsManager.Infrastructure.Execution
             return spec;
         }
 
-        private string PrepareCmdScript(string scriptPath, ProcessLaunchSpec spec)
+        private string PrepareCmdScript(string scriptPath, Guid scriptId, ProcessLaunchSpec spec)
         {
             if (!spec.CaptureOutput || string.IsNullOrEmpty(_managerExecutablePath) || !File.Exists(_managerExecutablePath))
                 return scriptPath;
 
             try
             {
-                var transformed = CmdScriptTransformer.TryCreateManagedCopy(scriptPath);
+                var transformed = CmdScriptTransformer.TryCreateManagedCopy(scriptPath, scriptId);
                 if (string.IsNullOrEmpty(transformed)) return scriptPath;
                 spec.TemporaryScriptPath = transformed;
                 Environment.SetEnvironmentVariable("CMDSMANAGER_HOST_EXE", _managerExecutablePath, EnvironmentVariableTarget.Process);

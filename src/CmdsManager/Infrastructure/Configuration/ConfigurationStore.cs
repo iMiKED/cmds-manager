@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 7;
+        private const int CurrentVersion = 8;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -152,6 +152,12 @@ namespace CmdsManager.Infrastructure.Configuration
             app.StartHiddenWhenAutoStarted = ReadBool(ini, "Application", "StartHiddenWhenAutoStarted", true);
             app.AutoStartScripts = ReadBool(ini, "Application", "AutoStartScripts", true);
             app.ConfirmBeforeDelete = ReadBool(ini, "Application", "ConfirmBeforeDelete", true);
+            app.MainWindowPlacementSaved = ReadBool(ini, "Application", "MainWindowPlacementSaved", false);
+            app.MainWindowX = ReadInt(ini, "Application", "MainWindowX", app.MainWindowX, -100000, 100000);
+            app.MainWindowY = ReadInt(ini, "Application", "MainWindowY", app.MainWindowY, -100000, 100000);
+            app.MainWindowWidth = ReadInt(ini, "Application", "MainWindowWidth", app.MainWindowWidth, 880, 20000);
+            app.MainWindowHeight = ReadInt(ini, "Application", "MainWindowHeight", app.MainWindowHeight, 520, 20000);
+            app.MainWindowMaximized = ReadBool(ini, "Application", "MainWindowMaximized", false);
             app.EditorPath = ini.Get("Application", "EditorPath", app.EditorPath);
             app.EditorArguments = ini.Get("Application", "EditorArguments", app.EditorArguments);
             app.LogLevel = ini.Get("Application", "LogLevel", app.LogLevel);
@@ -213,6 +219,7 @@ namespace CmdsManager.Infrastructure.Configuration
             profile.WorkingDirectory = ini.Get(section, "WorkingDirectory", fallback.WorkingDirectory ?? string.Empty);
             profile.CaptureOutput = ReadBool(ini, section, "CaptureOutput", fallback.CaptureOutput);
             profile.OutputEncoding = ReadEnum(ini, section, "OutputEncoding", fallback.OutputEncoding);
+            profile.WordWrap = ReadBool(ini, section, "WordWrap", fallback.WordWrap);
             profile.AllowParallelInstances = ReadBool(ini, section, "AllowParallelInstances", fallback.AllowParallelInstances);
             profile.StopPolicy = ReadEnum(ini, section, "StopPolicy", fallback.StopPolicy);
             profile.StopTimeoutSeconds = ReadInt(ini, section, "StopTimeoutSeconds", fallback.StopTimeoutSeconds, 0, 3600);
@@ -239,6 +246,12 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set("Application", "StartHiddenWhenAutoStarted", Bool(app.StartHiddenWhenAutoStarted));
             ini.Set("Application", "AutoStartScripts", Bool(app.AutoStartScripts));
             ini.Set("Application", "ConfirmBeforeDelete", Bool(app.ConfirmBeforeDelete));
+            ini.Set("Application", "MainWindowPlacementSaved", Bool(app.MainWindowPlacementSaved));
+            ini.Set("Application", "MainWindowX", app.MainWindowX);
+            ini.Set("Application", "MainWindowY", app.MainWindowY);
+            ini.Set("Application", "MainWindowWidth", app.MainWindowWidth);
+            ini.Set("Application", "MainWindowHeight", app.MainWindowHeight);
+            ini.Set("Application", "MainWindowMaximized", Bool(app.MainWindowMaximized));
             ini.Set("Application", "EditorPath", app.EditorPath ?? string.Empty);
             ini.Set("Application", "EditorArguments", app.EditorArguments ?? string.Empty);
             ini.Set("Application", "LogLevel", app.LogLevel ?? "Information");
@@ -295,6 +308,7 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set(section, "WindowMode", profile.WindowMode);
             ini.Set(section, "CaptureOutput", Bool(profile.CaptureOutput));
             ini.Set(section, "OutputEncoding", profile.OutputEncoding);
+            ini.Set(section, "WordWrap", Bool(profile.WordWrap));
             ini.Set(section, "AllowParallelInstances", Bool(profile.AllowParallelInstances));
             if (includeAutoStart)
             {
@@ -337,6 +351,18 @@ namespace CmdsManager.Infrastructure.Configuration
             if (configuration.Application.ConsolePaneHeight < 100 || configuration.Application.ConsolePaneHeight > 4000)
             {
                 throw new ConfigurationValidationException("Application", "ConsolePaneHeight", "value from 100 to 4000 is required");
+            }
+
+            if (configuration.Application.MainWindowX < -100000 || configuration.Application.MainWindowX > 100000 ||
+                configuration.Application.MainWindowY < -100000 || configuration.Application.MainWindowY > 100000)
+            {
+                throw new ConfigurationValidationException("Application", "MainWindowPosition", "coordinates from -100000 to 100000 are required");
+            }
+
+            if (configuration.Application.MainWindowWidth < 880 || configuration.Application.MainWindowWidth > 20000 ||
+                configuration.Application.MainWindowHeight < 520 || configuration.Application.MainWindowHeight > 20000)
+            {
+                throw new ConfigurationValidationException("Application", "MainWindowSize", "width from 880 to 20000 and height from 520 to 20000 are required");
             }
 
             ValidateColor(configuration.Application.ConsoleForegroundColor, "ConsoleForegroundColor");
@@ -535,12 +561,21 @@ namespace CmdsManager.Infrastructure.Configuration
                 }
             }
 
+            string deprecated;
+            if (ini.TryGet("Strings.ru", "Settings.Warning", out deprecated) ||
+                ini.TryGet("Strings.en", "Settings.Warning", out deprecated))
+            {
+                return true;
+            }
+
             return false;
         }
 
         private static void UpgradeConfiguration(AppConfiguration configuration, int loadedVersion)
         {
             if (configuration.Localization?.Languages == null) return;
+            foreach (var language in configuration.Localization.Languages.Values)
+                language.Remove("Settings.Warning");
             if (loadedVersion < 3)
             {
                 ReplaceUnmodifiedString(configuration.Localization, "ru", "Script.Encoding.Auto",

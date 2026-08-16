@@ -8,12 +8,11 @@ namespace CmdsManager.Infrastructure.Execution
     {
         private static readonly byte[] ManagedStartPrefix = Encoding.ASCII.GetBytes(
             "set \"CMDSMANAGER_START_CWD=%CD%\" & set \"CMDSMANAGER_START_LINE=");
-        private static readonly byte[] ManagedStartSuffix = Encoding.ASCII.GetBytes(
-            "\" & \"%CMDSMANAGER_HOST_EXE%\" --managed-start-env");
-
-        internal static string TryCreateManagedCopy(string scriptPath)
+        internal static string TryCreateManagedCopy(string scriptPath, Guid parentScriptId)
         {
             var source = File.ReadAllBytes(scriptPath);
+            var managedStartSuffix = Encoding.ASCII.GetBytes(
+                "\" & \"%CMDSMANAGER_HOST_EXE%\" --managed-start-env " + parentScriptId.ToString("D"));
             using (var output = new MemoryStream(source.Length + 256))
             {
                 var replacements = 0;
@@ -29,7 +28,7 @@ namespace CmdsManager.Infrastructure.Execution
                         output.Write(source, lineStart, startToken - lineStart);
                         output.Write(ManagedStartPrefix, 0, ManagedStartPrefix.Length);
                         output.Write(source, startToken + 5, lineEnd - startToken - 5);
-                        output.Write(ManagedStartSuffix, 0, ManagedStartSuffix.Length);
+                        output.Write(managedStartSuffix, 0, managedStartSuffix.Length);
                         replacements++;
                     }
                     else

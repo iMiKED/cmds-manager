@@ -76,13 +76,6 @@ namespace CmdsManager.Presentation.Forms
             AddRow(general, string.Empty, _startMinimized);
             AddRow(general, string.Empty, _autoStartScripts);
             AddRow(general, string.Empty, _confirmDelete);
-            AddRow(general, string.Empty, new Label
-            {
-                AutoSize = true,
-                MaximumSize = new Size(335, 0),
-                Tag = AppThemeManager.MutedTextTag,
-                Text = _text["Settings.Warning"]
-            });
 
             var tools = CreateTable();
             AddRow(tools, _text["Settings.Editor"], WithFileButton(_editorPath, _text["Settings.AppFilter"]));

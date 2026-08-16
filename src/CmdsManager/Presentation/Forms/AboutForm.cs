@@ -75,12 +75,12 @@ namespace CmdsManager.Presentation.Forms
                 Anchor = AnchorStyles.Left | AnchorStyles.Top,
                 Margin = new Padding(0, 1, 18, 0)
             };
-            var close = new Button
+            var close = new FluentButton
             {
                 Text = text["Common.Close"],
                 DialogResult = DialogResult.OK,
                 AutoSize = true,
-                FlatStyle = FlatStyle.System
+                Primary = true
             };
             var buttons = new FlowLayoutPanel
             {

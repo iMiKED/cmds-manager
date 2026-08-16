@@ -92,6 +92,12 @@ namespace CmdsManager.Tests
                 configuration.Application.ConsoleTabBackgroundOpacity = 65;
                 configuration.Application.ConsoleActiveTabBackgroundColor = "#203040";
                 configuration.Application.ConsoleActiveTabBackgroundOpacity = 73;
+                configuration.Application.MainWindowPlacementSaved = true;
+                configuration.Application.MainWindowX = 123;
+                configuration.Application.MainWindowY = 234;
+                configuration.Application.MainWindowWidth = 1280;
+                configuration.Application.MainWindowHeight = 760;
+                configuration.Application.MainWindowMaximized = true;
                 configuration.Localization.Language = "en";
                 configuration.Scripts.Add(new ScriptDefinition
                 {
@@ -104,6 +110,7 @@ namespace CmdsManager.Tests
                         AutoStartWithApplication = true,
                         AutoStartOrder = 42,
                         OutputEncoding = ScriptOutputEncoding.Windows1251,
+                        WordWrap = true,
                         StopTimeoutSeconds = 3
                     }
                 });
@@ -116,6 +123,7 @@ namespace CmdsManager.Tests
                 Equal(42, reloaded.Scripts[0].Launch.AutoStartOrder, "auto-start order");
                 Equal(ScriptInterpreter.Cmd, reloaded.Scripts[0].Launch.Interpreter, "interpreter");
                 Equal(ScriptOutputEncoding.Windows1251, reloaded.Scripts[0].Launch.OutputEncoding, "output encoding");
+                Equal(true, reloaded.Scripts[0].Launch.WordWrap, "script word-wrap setting");
                 Equal("en", reloaded.Localization.Language, "selected language");
                 Assert(reloaded.Localization.Languages.ContainsKey("ru") && reloaded.Localization.Languages.ContainsKey("en"), "Russian and English string tables");
                 Equal("Start", reloaded.Localization.Languages["en"]["Main.Start"], "English string");
@@ -133,8 +141,16 @@ namespace CmdsManager.Tests
                 Equal(65, reloaded.Application.ConsoleTabBackgroundOpacity, "tab background opacity");
                 Equal("#203040", reloaded.Application.ConsoleActiveTabBackgroundColor, "active tab background color");
                 Equal(73, reloaded.Application.ConsoleActiveTabBackgroundOpacity, "active tab background opacity");
+                Equal(true, reloaded.Application.MainWindowPlacementSaved, "main window placement marker");
+                Equal(123, reloaded.Application.MainWindowX, "main window X position");
+                Equal(234, reloaded.Application.MainWindowY, "main window Y position");
+                Equal(1280, reloaded.Application.MainWindowWidth, "main window width");
+                Equal(760, reloaded.Application.MainWindowHeight, "main window height");
+                Equal(true, reloaded.Application.MainWindowMaximized, "main window maximized state");
                 var savedText = File.ReadAllText(configPath, Encoding.UTF8);
                 Assert(savedText.Contains("[Strings.ru]") && savedText.Contains("[Strings.en]"), "localization is stored in INI");
+                Assert(savedText.Contains("MainWindowPlacementSaved=true") && savedText.Contains("WordWrap=true"),
+                    "window placement and script word wrap are stored in INI");
 
                 reloaded.Scripts[0].Name = "Second save";
                 store.Save(reloaded);
@@ -147,7 +163,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(7, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(8, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -157,7 +173,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(7, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal(8, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
                 Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
                 Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
@@ -171,7 +187,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nSettings.Title=Настройки CmdsManager\r\n",
                     new UTF8Encoding(false));
                 var version5 = new ConfigurationStore(version5Path).LoadOrCreate();
-                Equal(7, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
+                Equal(8, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
                 Equal("Cmds Manager settings", version5.Localization.Languages["en"]["Settings.Title"],
                     "old default English brand is migrated");
                 Equal("Настройки Cmds Manager", version5.Localization.Languages["ru"]["Settings.Title"],
@@ -180,11 +196,30 @@ namespace CmdsManager.Tests
                 var version6Path = Path.Combine(directory, "Version6.ini");
                 File.WriteAllText(version6Path, "[Application]\r\nConfigVersion=6\r\n", new UTF8Encoding(false));
                 var version6 = new ConfigurationStore(version6Path).LoadOrCreate();
-                Equal(7, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
+                Equal(8, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
                 Equal(ApplicationTheme.System, version6.Application.Theme,
                     "existing installations default to the system application theme");
                 Assert(File.ReadAllText(version6Path, Encoding.UTF8).Contains("Theme=System"),
                     "theme selection is persisted during version 6 migration");
+
+                var version7Path = Path.Combine(directory, "Version7.ini");
+                File.WriteAllText(version7Path,
+                    "[Application]\r\nConfigVersion=7\r\n" +
+                    "[Localization]\r\nLanguage=en\r\n" +
+                    "[Strings.en]\r\nSettings.Warning=Auto-start is per-user...\r\n" +
+                    "[Strings.ru]\r\nSettings.Warning=Автозапуск настраивается...\r\n" +
+                    "[Script:69e1f16b-4daa-4334-92c0-95b0a3baee56]\r\n" +
+                    "Name=Version 7 script\r\nPath=" + scriptPath + "\r\n",
+                    new UTF8Encoding(false));
+                var version7 = new ConfigurationStore(version7Path).LoadOrCreate();
+                Equal(8, version7.Application.ConfigVersion, "version 7 configuration is upgraded");
+                Equal(false, version7.Scripts[0].Launch.WordWrap,
+                    "existing scripts receive the default disabled word-wrap setting");
+                var version7Text = File.ReadAllText(version7Path, Encoding.UTF8);
+                Assert(version7Text.Contains("MainWindowPlacementSaved=false") && version7Text.Contains("WordWrap=false"),
+                    "version 7 migration writes window placement and word-wrap keys");
+                Assert(!version7Text.Contains("Settings.Warning="),
+                    "version 7 migration removes the obsolete auto-start warning string");
             });
         }
 
@@ -232,6 +267,8 @@ namespace CmdsManager.Tests
                     var transformed = File.ReadAllText(managedSpec.TemporaryScriptPath, Encoding.ASCII);
                     Assert(transformed.Contains("CMDSMANAGER_START_LINE=") && transformed.Contains("--managed-start-env"),
                         "START is redirected to CmdsManager IPC through CMD-safe environment transport");
+                    Assert(transformed.Contains(script.Id.ToString("D")),
+                        "transformed START identifies its parent script for inherited console settings");
                     Assert(transformed.Contains("%ROOT_DIR%start-gplay-bridge.cmd"), "child path variables are preserved for parent CMD expansion");
                     Equal(managerPath, Environment.GetEnvironmentVariable("CMDSMANAGER_HOST_EXE"),
                         "manager executable is scoped to the CmdsManager process environment");
@@ -548,6 +585,9 @@ namespace CmdsManager.Tests
                         "settings exposes and selects system, light, and dark themes");
                     Assert(!AllControls(settings).OfType<ScrollableControl>().Any(control => control.AutoScroll),
                         "settings dialog has no AutoScroll container");
+                    Assert(!configuration.Localization.Languages.Values.Any(values =>
+                            values.ContainsKey("Settings.Warning")),
+                        "obsolete per-user auto-start warning is removed from the language tables");
                     Assert(!AllControls(script).OfType<ScrollableControl>().Any(control => control.AutoScroll),
                         "script editor has no AutoScroll container");
                     var retention = AllControls(settings).OfType<NumericUpDown>()
@@ -617,6 +657,8 @@ namespace CmdsManager.Tests
                         .Where(control => control.Text != text["Script.Enabled"]).ToArray();
                     Assert(alignedChecks.Select(control => AbsoluteLeft(control, script)).Distinct().Count() == 1,
                         "script option checkboxes share one left edge");
+                    Assert(alignedChecks.Any(control => control.Text == text["Console.WordWrap"]),
+                        "script editor exposes the persistent console word-wrap option");
                     Assert(alignedTextInputs.All(control => control.Height >= 28) &&
                         AllControls(script).OfType<TextBox>()
                             .Where(control => control.Parent.GetType().Name == "FluentTextBox")
@@ -657,6 +699,9 @@ namespace CmdsManager.Tests
                     Assert(aboutGaps.Max() - aboutGaps.Min() <= 1, "About information rows have equal spacing");
                     Assert(AllControls(about).Any(control => control.GetType().Name.Contains("FadeGradientPanel")),
                         "About contains the fade-out gradient background");
+                    var aboutClose = AllControls(about).OfType<Button>().Single();
+                    Assert(aboutClose.GetType().Name == "FluentButton" && aboutClose.Height >= 28,
+                        "About uses a compact Fluent close button");
                     Assert(typeof(MainForm).Assembly.GetManifestResourceNames().Contains("CmdsManager.Assets.CmdsManager.ico"),
                         "application icon is embedded in the executable");
                     Assert(!configuration.Localization.Languages.Values.Any(values => values.Values.Any(value =>
@@ -707,7 +752,9 @@ namespace CmdsManager.Tests
                 configuration.Application.ConsoleActiveTabBackgroundOpacity = 72;
                 var state = new ConfigurationState(configuration);
                 var text = new LocalizationService(state);
-                using (var console = new ConsoleTabsControl(text, () => state.Current.Application))
+                var initiallyWrappedScriptId = Guid.NewGuid();
+                using (var console = new ConsoleTabsControl(text, () => state.Current.Application,
+                    scriptId => scriptId == initiallyWrappedScriptId))
                 {
                     console.CreateControl();
                     typeof(ConsoleTabsControl).GetMethod("ApplyApplicationTheme",
@@ -803,7 +850,7 @@ namespace CmdsManager.Tests
                     Assert(menuTexts.Contains(text["Console.FullScreen"]), "console menu can show the active tab full screen");
                     Assert(menuTexts.Contains(text["Console.MaximizePane"]), "console menu can maximize the console area");
 
-                    var windowsScriptId = Guid.NewGuid();
+                    var windowsScriptId = initiallyWrappedScriptId;
                     const int windowsProcessId = 4343;
                     const string windowsPhrase = "Файл не найден.";
                     var windowsBytes = Encoding.GetEncoding(1251).GetBytes(windowsPhrase);
@@ -827,11 +874,17 @@ namespace CmdsManager.Tests
                         .Single(item => item.Text == text["Script.Encoding.Windows1251"]).PerformClick();
                     Equal(windowsPhrase, windowsOutput.Text.TrimEnd('\r', '\n'),
                         "changing active-tab encoding re-decodes existing raw history");
+                    Assert(windowsOutput.WordWrap && windowsOutput.ScrollBars == RichTextBoxScrollBars.Vertical,
+                        "new console tabs apply their script's saved word-wrap setting");
+                    ConsoleWordWrapChangedEventArgs wrapChanged = null;
+                    console.WordWrapChanged += (sender, args) => wrapChanged = args;
                     var wrapItem = menu.Items.OfType<ToolStripMenuItem>()
                         .Single(item => item.Text == text["Console.WordWrap"]);
                     wrapItem.PerformClick();
-                    Assert(windowsOutput.WordWrap && windowsOutput.ScrollBars == RichTextBoxScrollBars.Vertical,
-                        "active console tab can enable word wrap");
+                    Assert(!windowsOutput.WordWrap && windowsOutput.ScrollBars == RichTextBoxScrollBars.Both,
+                        "active console tab can disable word wrap");
+                    Assert(wrapChanged != null && wrapChanged.ScriptId == windowsScriptId && !wrapChanged.WordWrap,
+                        "word-wrap changes identify the script whose setting must be persisted");
 
                     Assert(console.DetachSelectedTab(), "selected console tab detaches without restarting its process");
                     Assert(WaitWithUi(() => console.DetachedTabCount == 1 && windowsOutput.FindForm() != null,
@@ -893,6 +946,18 @@ namespace CmdsManager.Tests
                 configuration.Localization.Language = "en";
                 configuration.Application.Theme = ApplicationTheme.Light;
                 configuration.Application.ConsolePaneHeight = 180;
+                var workingArea = Screen.PrimaryScreen.WorkingArea;
+                var initialBounds = new Rectangle(
+                    workingArea.Left + 24,
+                    workingArea.Top + 24,
+                    Math.Max(880, Math.Min(1000, workingArea.Width - 72)),
+                    Math.Max(520, Math.Min(650, workingArea.Height - 72)));
+                configuration.Application.MainWindowPlacementSaved = true;
+                configuration.Application.MainWindowX = initialBounds.X;
+                configuration.Application.MainWindowY = initialBounds.Y;
+                configuration.Application.MainWindowWidth = initialBounds.Width;
+                configuration.Application.MainWindowHeight = initialBounds.Height;
+                configuration.Application.MainWindowMaximized = false;
                 var script = new ScriptDefinition
                 {
                     Id = Guid.NewGuid(),
@@ -929,7 +994,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.6.4", form.Text,
+                    Equal("Cmds Manager 0.6.5", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
@@ -987,6 +1052,42 @@ namespace CmdsManager.Tests
                         "table uses compact Fluent rows, quiet horizontal separators, and custom headers");
                     form.Show();
                     System.Windows.Forms.Application.DoEvents();
+                    Assert(Math.Abs(form.Left - initialBounds.Left) <= 2 &&
+                        Math.Abs(form.Top - initialBounds.Top) <= 2 &&
+                        Math.Abs(form.Width - initialBounds.Width) <= 2 &&
+                        Math.Abs(form.Height - initialBounds.Height) <= 2,
+                        "main window position and size are restored from INI");
+                    var movedBounds = new Rectangle(initialBounds.X + 18, initialBounds.Y + 16,
+                        initialBounds.Width + 12, initialBounds.Height + 10);
+                    form.Bounds = movedBounds;
+                    typeof(MainForm).GetMethod("HandleWindowResizeEnd",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                        .Invoke(form, new object[] { form, EventArgs.Empty });
+                    Assert(WaitWithUi(() =>
+                    {
+                        var saved = store.Reload().Application;
+                        return saved.MainWindowPlacementSaved && saved.MainWindowX == movedBounds.X &&
+                            saved.MainWindowY == movedBounds.Y && saved.MainWindowWidth == movedBounds.Width &&
+                            saved.MainWindowHeight == movedBounds.Height && !saved.MainWindowMaximized;
+                    }, TimeSpan.FromSeconds(2)),
+                        "moved and resized main window placement is persisted to INI");
+                    form.WindowState = FormWindowState.Maximized;
+                    System.Windows.Forms.Application.DoEvents();
+                    typeof(MainForm).GetMethod("HandleWindowResizeEnd",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                        .Invoke(form, new object[] { form, EventArgs.Empty });
+                    Assert(WaitWithUi(() => store.Reload().Application.MainWindowMaximized,
+                        TimeSpan.FromSeconds(2)),
+                        "maximized main window state is persisted to INI");
+                    form.WindowState = FormWindowState.Normal;
+                    System.Windows.Forms.Application.DoEvents();
+                    typeof(MainForm).GetMethod("HandleWindowResizeEnd",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                        .Invoke(form, new object[] { form, EventArgs.Empty });
+                    Assert(WaitWithUi(() => !store.Reload().Application.MainWindowMaximized,
+                        TimeSpan.FromSeconds(2)) && Math.Abs(form.Left - movedBounds.Left) <= 2 &&
+                        Math.Abs(form.Top - movedBounds.Top) <= 2,
+                        "restoring the main window preserves its normal bounds and state");
                     var split = FindControl<SplitContainer>(form);
                     Assert(split != null && split.FixedPanel == FixedPanel.Panel2,
                         "console pane keeps its configured height when the main window is resized");
@@ -1102,6 +1203,7 @@ namespace CmdsManager.Tests
                         Interpreter = ScriptInterpreter.Cmd,
                         WorkingDirectory = directory,
                         CaptureOutput = true,
+                        WordWrap = true,
                         StopPolicy = ScriptStopPolicy.Kill,
                         StopTimeoutSeconds = 0
                     }
@@ -1123,7 +1225,7 @@ namespace CmdsManager.Tests
                     supervisor.Start(parent, string.Empty);
                     Assert(WaitWithUi(() => tabs.TabCount == 1, TimeSpan.FromSeconds(4)), "parent console tab appears");
 
-                    form.RunManagedChild(directory, new[]
+                    form.RunManagedChild(parent.Id, directory, new[]
                     {
                         "RuStore GPlay Bridge", "/D", directory, "cmd", "/k", childPath
                     });
@@ -1138,6 +1240,15 @@ namespace CmdsManager.Tests
                         .Single(output => childProcessId.Equals(output.Tag));
                     Assert(WaitWithUi(() => childOutput.Text.Contains("managed-child-output"),
                         TimeSpan.FromSeconds(4)), "managed child output is captured in its own tab");
+                    var parentIndex = Enumerable.Range(0, tabs.TabCount).First(index =>
+                        tabs.GetTabText(index).Contains("Parent script"));
+                    var parentProcessId = tabs.GetTabKey(parentIndex);
+                    var parentOutput = AllControls(console).OfType<RichTextBox>()
+                        .Single(output => parentProcessId.Equals(output.Tag));
+                    Assert(parentOutput.WordWrap && childOutput.WordWrap &&
+                        parentOutput.ScrollBars == RichTextBoxScrollBars.Vertical &&
+                        childOutput.ScrollBars == RichTextBoxScrollBars.Vertical,
+                        "managed child console inherits its parent script's saved word-wrap setting");
                     Equal(Color.FromArgb(0x10, 0x20, 0x30), childOutput.BackColor,
                         "dark application theme does not overwrite the configured console background");
                     Assert(grid.BackgroundColor.GetBrightness() < 0.25f,
@@ -1152,6 +1263,15 @@ namespace CmdsManager.Tests
                     System.Windows.Forms.Application.DoEvents();
                     Assert(tabs.GetTabText(tabs.SelectedIndex).Contains("Parent script"),
                         "selecting a grid row selects its console tab");
+
+                    tabs.SelectTab(childProcessId);
+                    var wrapItem = tabs.ContextMenuStrip.Items.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Console.WordWrap"]);
+                    wrapItem.PerformClick();
+                    Assert(!parentOutput.WordWrap && !childOutput.WordWrap,
+                        "changing Word Wrap in a child tab updates the whole active script family");
+                    Equal(false, store.Reload().Scripts.Single(item => item.Id == parent.Id).Launch.WordWrap,
+                        "changing Word Wrap in a generated child tab persists the parent script setting to INI");
 
                     ConsoleTabCloseRequestedEventArgs closeRequest = null;
                     console.CloseRequested += (sender, args) => closeRequest = args;
@@ -1233,8 +1353,13 @@ namespace CmdsManager.Tests
 
                 Assert(command.StartsWith("START ", StringComparison.Ordinal), "managed START uses a dedicated IPC command");
                 var values = Encoding.UTF8.GetString(Convert.FromBase64String(command.Substring(6))).Split('\0');
+                var parentScriptId = Guid.Empty;
+                Assert(values.Length >= 3 && Guid.TryParse(values[0], out parentScriptId),
+                    "managed START IPC includes its parent script identifier");
+                Equal(parent.Id, parentScriptId,
+                    "managed START IPC preserves the parent identifier for inherited console settings");
                 ManagedStartRequest request;
-                try { request = ManagedStartRequestParser.Parse(values[0], values.Skip(1)); }
+                try { request = ManagedStartRequestParser.Parse(values[1], values.Skip(2)); }
                 catch (Exception exception)
                 {
                     throw new InvalidOperationException("Managed START IPC arguments: " +

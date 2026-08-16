@@ -31,6 +31,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly ToolStrip _toolbar;
         private readonly Dictionary<ToolStripButton, ToolbarIcon> _toolbarIcons =
             new Dictionary<ToolStripButton, ToolbarIcon>();
+        private readonly Dictionary<Guid, Guid> _managedChildParents = new Dictionary<Guid, Guid>();
         private readonly ConsoleTabsControl _console;
         private readonly SplitContainer _mainSplit;
         private readonly System.Windows.Forms.Timer _layoutSaveTimer = new System.Windows.Forms.Timer { Interval = 600 };
@@ -54,8 +55,12 @@ namespace CmdsManager.Presentation.Forms
         private readonly ToolStripMenuItem _contextDelete = new ToolStripMenuItem();
         private bool _refreshingGrid;
         private bool _restoringPaneLayout;
+        private bool _restoringWindowPlacement;
+        private bool _windowPlacementReady;
+        private bool _restoreWindowMaximized;
         private bool _consolePaneMaximized;
         private int _normalConsolePaneHeight;
+        private FormWindowState _lastNonMinimizedWindowState = FormWindowState.Normal;
         private AppThemePalette _palette = AppThemePalette.Light();
 
         public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
@@ -68,7 +73,8 @@ namespace CmdsManager.Presentation.Forms
             _startup = startup ?? throw new ArgumentNullException(nameof(startup));
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _text = text ?? throw new ArgumentNullException(nameof(text));
-            _console = new ConsoleTabsControl(_text, () => Configuration.Application) { Dock = DockStyle.Fill };
+            _console = new ConsoleTabsControl(_text, () => Configuration.Application, ResolveConsoleWordWrap)
+                { Dock = DockStyle.Fill };
 
             Text = ApplicationResources.WindowTitle;
             StartPosition = FormStartPosition.CenterScreen;
@@ -76,6 +82,7 @@ namespace CmdsManager.Presentation.Forms
             Size = new Size(1120, 680);
             Icon = ApplicationResources.Icon;
             KeyPreview = true;
+            ApplyWindowPlacement();
 
             _toolbar = new ToolStrip
             {
@@ -135,9 +142,10 @@ namespace CmdsManager.Presentation.Forms
             _mainSplit.SizeChanged += HandleSplitSizeChanged;
             _layoutSaveTimer.Tick += HandleLayoutSaveTimer;
             FormClosing += HandleFormClosing;
-            Shown += (sender, args) => ApplyConsolePaneHeight();
+            Shown += HandleMainShown;
             KeyDown += HandleMainKeyDown;
             Resize += HandleMainResize;
+            ResizeEnd += HandleWindowResizeEnd;
 
             _supervisor.StateChanged += HandleStateChanged;
             _supervisor.OutputReceived += HandleOutputReceived;
@@ -147,6 +155,7 @@ namespace CmdsManager.Presentation.Forms
             SystemEvents.UserPreferenceChanged += HandleSystemPreferenceChanged;
             _console.CloseRequested += HandleConsoleCloseRequested;
             _console.PaneMaximizeRequested += HandleConsolePaneMaximizeRequested;
+            _console.WordWrapChanged += HandleConsoleWordWrapChanged;
             ApplyLocalization();
         }
 
@@ -156,7 +165,10 @@ namespace CmdsManager.Presentation.Forms
 
         public void ShowFromTray()
         {
-            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            if (WindowState == FormWindowState.Minimized)
+                WindowState = _lastNonMinimizedWindowState == FormWindowState.Maximized
+                    ? FormWindowState.Maximized
+                    : FormWindowState.Normal;
             Show();
             Activate();
             BringToFront();
@@ -204,10 +216,19 @@ namespace CmdsManager.Presentation.Forms
 
         public void RunManagedChild(string parentWorkingDirectory, string[] startArguments)
         {
+            RunManagedChild(Guid.Empty, parentWorkingDirectory, startArguments);
+        }
+
+        public void RunManagedChild(Guid parentScriptId, string parentWorkingDirectory, string[] startArguments)
+        {
             try
             {
                 var request = ManagedStartRequestParser.Parse(parentWorkingDirectory, startArguments);
                 var script = request.ToScriptDefinition();
+                var owner = ResolveWordWrapOwner(parentScriptId);
+                var ownerScript = Configuration.Scripts.FirstOrDefault(item => item.Id == owner);
+                script.Launch.WordWrap = ownerScript?.Launch.WordWrap ?? Configuration.Defaults.WordWrap;
+                if (ownerScript != null) _managedChildParents[script.Id] = ownerScript.Id;
                 _supervisor.Start(script, Configuration.PowerShell7Path);
             }
             catch (Exception exception)
@@ -239,6 +260,7 @@ namespace CmdsManager.Presentation.Forms
                 SystemEvents.UserPreferenceChanged -= HandleSystemPreferenceChanged;
                 _console.CloseRequested -= HandleConsoleCloseRequested;
                 _console.PaneMaximizeRequested -= HandleConsolePaneMaximizeRequested;
+                _console.WordWrapChanged -= HandleConsoleWordWrapChanged;
                 _layoutSaveTimer.Stop();
                 _layoutSaveTimer.Dispose();
                 foreach (var button in _toolbarIcons.Keys)
@@ -470,6 +492,7 @@ namespace CmdsManager.Presentation.Forms
 
         private void OpenSettings()
         {
+            CaptureWindowPlacement();
             using (var form = new SettingsForm(Configuration.Application, Configuration.PowerShell7Path, Configuration.Localization, _text))
             {
                 if (form.ShowDialog(this) != DialogResult.OK) return;
@@ -511,6 +534,7 @@ namespace CmdsManager.Presentation.Forms
                 _state.Current = reloaded;
                 _console.ApplySettings();
                 ApplyTheme();
+                ApplyWindowPlacement();
                 ApplyConsolePaneHeight();
                 _log.Information("Configuration reloaded from disk.");
             }
@@ -633,6 +657,7 @@ namespace CmdsManager.Presentation.Forms
 
         private async void HandleConsoleCloseRequested(object sender, ConsoleTabCloseRequestedEventArgs args)
         {
+            _managedChildParents.Remove(args.ScriptId);
             if (!args.IsRunning) return;
             try { await _supervisor.StopInstanceAsync(args.ScriptId, args.ProcessId); }
             catch (Exception exception) { ShowError(_text["Console.StopFailed"], exception); }
@@ -641,6 +666,39 @@ namespace CmdsManager.Presentation.Forms
         private void HandleConsolePaneMaximizeRequested(object sender, EventArgs args)
         {
             ToggleConsolePaneMaximized();
+        }
+
+        private void HandleConsoleWordWrapChanged(object sender, ConsoleWordWrapChangedEventArgs args)
+        {
+            var owner = ResolveWordWrapOwner(args.ScriptId);
+            var script = Configuration.Scripts.FirstOrDefault(item => item.Id == owner);
+            if (script == null) return;
+
+            script.Launch.WordWrap = args.WordWrap;
+            var related = _managedChildParents.Where(pair => pair.Value == owner)
+                .Select(pair => pair.Key)
+                .Concat(new[] { owner });
+            _console.ApplyWordWrap(related, args.WordWrap);
+            try { _store.Save(Configuration); }
+            catch (Exception exception)
+            {
+                _log.Warning("Unable to persist the console word-wrap setting: " + exception.Message);
+            }
+        }
+
+        private bool ResolveConsoleWordWrap(Guid scriptId)
+        {
+            var owner = ResolveWordWrapOwner(scriptId);
+            var script = Configuration.Scripts.FirstOrDefault(item => item.Id == owner);
+            return script?.Launch.WordWrap ?? Configuration.Defaults.WordWrap;
+        }
+
+        private Guid ResolveWordWrapOwner(Guid scriptId)
+        {
+            Guid owner;
+            return scriptId != Guid.Empty && _managedChildParents.TryGetValue(scriptId, out owner)
+                ? owner
+                : scriptId;
         }
 
         private void HandleMainKeyDown(object sender, KeyEventArgs args)
@@ -660,6 +718,35 @@ namespace CmdsManager.Presentation.Forms
                 Hide();
                 return;
             }
+
+            var stateChanged = _lastNonMinimizedWindowState != WindowState;
+            _lastNonMinimizedWindowState = WindowState;
+            if (stateChanged) ScheduleWindowPlacementSave();
+        }
+
+        private void HandleMainShown(object sender, EventArgs args)
+        {
+            _restoringWindowPlacement = true;
+            try
+            {
+                if (_restoreWindowMaximized) WindowState = FormWindowState.Maximized;
+                _lastNonMinimizedWindowState = WindowState == FormWindowState.Maximized
+                    ? FormWindowState.Maximized
+                    : FormWindowState.Normal;
+            }
+            finally
+            {
+                _restoringWindowPlacement = false;
+            }
+
+            ApplyConsolePaneHeight();
+            _windowPlacementReady = true;
+            ScheduleWindowPlacementSave();
+        }
+
+        private void HandleWindowResizeEnd(object sender, EventArgs args)
+        {
+            ScheduleWindowPlacementSave();
         }
 
         private void HandleSplitSizeChanged(object sender, EventArgs args)
@@ -757,6 +844,18 @@ namespace CmdsManager.Presentation.Forms
         {
             Configuration.Application.ConsolePaneHeight = Math.Max(_mainSplit.Panel2MinSize,
                 _normalConsolePaneHeight);
+            ScheduleLayoutSave();
+        }
+
+        private void ScheduleWindowPlacementSave()
+        {
+            if (!_windowPlacementReady || _restoringWindowPlacement || WindowState == FormWindowState.Minimized) return;
+            CaptureWindowPlacement();
+            ScheduleLayoutSave();
+        }
+
+        private void ScheduleLayoutSave()
+        {
             _layoutSaveTimer.Stop();
             _layoutSaveTimer.Start();
         }
@@ -764,7 +863,7 @@ namespace CmdsManager.Presentation.Forms
         private void HandleLayoutSaveTimer(object sender, EventArgs args)
         {
             _layoutSaveTimer.Stop();
-            SavePaneHeightSilently();
+            SaveLayoutSilently();
         }
 
         private int OneScriptPanelHeight => Math.Max(48,
@@ -793,7 +892,71 @@ namespace CmdsManager.Presentation.Forms
             }
         }
 
-        private void SavePaneHeightSilently()
+        private void ApplyWindowPlacement()
+        {
+            var settings = Configuration.Application;
+            _restoreWindowMaximized = settings.MainWindowMaximized;
+            _lastNonMinimizedWindowState = _restoreWindowMaximized
+                ? FormWindowState.Maximized
+                : FormWindowState.Normal;
+            if (!settings.MainWindowPlacementSaved) return;
+
+            var requested = new Rectangle(settings.MainWindowX, settings.MainWindowY,
+                settings.MainWindowWidth, settings.MainWindowHeight);
+            var visible = KeepWindowOnScreen(requested);
+            _restoringWindowPlacement = true;
+            try
+            {
+                if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+                StartPosition = FormStartPosition.Manual;
+                Bounds = visible;
+                if (_windowPlacementReady && _restoreWindowMaximized) WindowState = FormWindowState.Maximized;
+            }
+            finally
+            {
+                _restoringWindowPlacement = false;
+            }
+        }
+
+        private Rectangle KeepWindowOnScreen(Rectangle requested)
+        {
+            var workingArea = Screen.FromRectangle(requested).WorkingArea;
+            var width = Math.Max(Math.Min(MinimumSize.Width, workingArea.Width),
+                Math.Min(requested.Width, workingArea.Width));
+            var height = Math.Max(Math.Min(MinimumSize.Height, workingArea.Height),
+                Math.Min(requested.Height, workingArea.Height));
+            var maximumX = Math.Max(workingArea.Left, workingArea.Right - width);
+            var maximumY = Math.Max(workingArea.Top, workingArea.Bottom - height);
+            var x = Math.Max(workingArea.Left, Math.Min(maximumX, requested.X));
+            var y = Math.Max(workingArea.Top, Math.Min(maximumY, requested.Y));
+            return new Rectangle(x, y, width, height);
+        }
+
+        private void CaptureWindowPlacement()
+        {
+            if (!_windowPlacementReady || _restoringWindowPlacement) return;
+            var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            if (bounds.Width < MinimumSize.Width || bounds.Height < MinimumSize.Height) return;
+
+            var settings = Configuration.Application;
+            settings.MainWindowPlacementSaved = true;
+            settings.MainWindowX = bounds.X;
+            settings.MainWindowY = bounds.Y;
+            settings.MainWindowWidth = bounds.Width;
+            settings.MainWindowHeight = bounds.Height;
+            settings.MainWindowMaximized = _lastNonMinimizedWindowState == FormWindowState.Maximized;
+        }
+
+        private void PersistLayoutNow()
+        {
+            _layoutSaveTimer.Stop();
+            if (!_consolePaneMaximized && _normalConsolePaneHeight > 0)
+                Configuration.Application.ConsolePaneHeight = _normalConsolePaneHeight;
+            CaptureWindowPlacement();
+            SaveLayoutSilently();
+        }
+
+        private void SaveLayoutSilently()
         {
             try
             {
@@ -801,7 +964,7 @@ namespace CmdsManager.Presentation.Forms
             }
             catch (Exception exception)
             {
-                _log.Warning("Unable to persist the console pane height: " + exception.Message);
+                _log.Warning("Unable to persist the window layout: " + exception.Message);
             }
         }
 
@@ -881,18 +1044,14 @@ namespace CmdsManager.Presentation.Forms
         {
             if (!AllowClose && args.CloseReason == CloseReason.UserClosing)
             {
+                PersistLayoutNow();
                 args.Cancel = true;
                 if (Configuration.Application.CloseToTray) Hide();
                 else ExitRequested?.Invoke(this, EventArgs.Empty);
             }
             else if (AllowClose)
             {
-                _layoutSaveTimer.Stop();
-                if (!_consolePaneMaximized && _normalConsolePaneHeight > 0)
-                {
-                    Configuration.Application.ConsolePaneHeight = _normalConsolePaneHeight;
-                    SavePaneHeightSilently();
-                }
+                PersistLayoutNow();
             }
         }
 
