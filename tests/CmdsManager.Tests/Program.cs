@@ -563,6 +563,12 @@ namespace CmdsManager.Tests
                     Equal(6, colorButtons.Length, "appearance tab exposes all console and tab colors");
                     Assert(colorButtons.Select(control => AbsoluteLeft(control, settings)).Distinct().Count() == 1,
                         "appearance color controls share one left edge");
+                    var settingsTextInputs = AllControls(settings).OfType<TextBox>()
+                        .Where(control => !(control.Parent is NumericUpDown)).ToArray();
+                    Equal(4, settingsTextInputs.Length,
+                        "settings exposes the console font, editor, editor arguments, and pwsh path fields");
+                    Assert(settingsTextInputs.Select(control => AbsoluteLeft(control, settings)).Distinct().Count() == 1,
+                        "settings text fields share one left edge, including console font and pwsh path");
                     var numeric = AllControls(script).OfType<NumericUpDown>().ToArray();
                     Equal(3, numeric.Length, "script editor has three compact numeric settings");
                     Assert(numeric.All(control => control.Width <= 65) && numeric.Select(control => control.Parent).Distinct().Count() == 1,
@@ -664,6 +670,9 @@ namespace CmdsManager.Tests
                 using (var console = new ConsoleTabsControl(text, () => state.Current.Application))
                 {
                     console.CreateControl();
+                    typeof(ConsoleTabsControl).GetMethod("ApplyApplicationTheme",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                        .Invoke(console, new object[] { ApplicationTheme.Dark });
                     var scriptId = Guid.NewGuid();
                     const int processId = 4242;
                     console.EnqueueStarted(new ScriptInstanceEventArgs(scriptId, "Fast output", processId, DateTime.Now, true, null));
@@ -694,6 +703,8 @@ namespace CmdsManager.Tests
                         "running console tab has localized status text");
                     Assert(tabs.Height >= 40 && tabs.Font.Name == "Segoe UI",
                         "console tabs use the taller Segoe UI terminal strip");
+                    Assert(tabs.BackColor.GetBrightness() < 0.25f,
+                        "dark application theme paints the complete console tab strip dark");
                     Assert(!AllControls(console).OfType<TabControl>().Any(),
                         "console host has no native TabControl button surface");
                     Assert(tabs.Parent == output.Parent.Parent && tabs.Bottom == output.Parent.Top,
@@ -878,7 +889,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.6.0", form.Text,
+                    Equal("Cmds Manager 0.6.1", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");

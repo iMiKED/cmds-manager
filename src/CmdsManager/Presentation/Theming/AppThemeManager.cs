@@ -335,21 +335,45 @@ namespace CmdsManager.Presentation.Theming
             if (button == null) { base.OnRenderButtonBackground(args); return; }
             var role = button.Tag is FluentToolRole ? (FluentToolRole)button.Tag : FluentToolRole.Normal;
             Color fill;
+            Color border;
             if (!button.Enabled)
-                fill = role == FluentToolRole.Primary ? Color.FromArgb(110, _palette.Accent) : Color.Transparent;
+            {
+                fill = role == FluentToolRole.Primary ? Color.FromArgb(80, _palette.Accent) : _palette.Surface;
+                border = role == FluentToolRole.Primary ? Color.FromArgb(110, _palette.Accent) : _palette.Border;
+            }
             else if (role == FluentToolRole.Primary)
+            {
                 fill = button.Pressed ? _palette.AccentHover : _palette.Accent;
+                border = fill;
+            }
             else if (button.Pressed || button.Checked)
+            {
                 fill = _palette.Pressed;
+                border = _palette.Border;
+            }
             else if (button.Selected)
+            {
                 fill = _palette.Hover;
+                border = _palette.Border;
+            }
             else
-                fill = Color.Transparent;
+            {
+                fill = _palette.Surface;
+                border = _palette.Border;
+            }
 
-            if (fill.A == 0) return;
-            var bounds = new Rectangle(1, 2, Math.Max(1, button.Width - 3), Math.Max(1, button.Height - 5));
-            using (var path = RoundedRectangle(bounds, 6))
-            using (var brush = new SolidBrush(fill)) args.Graphics.FillPath(brush, path);
+            var bounds = new RectangleF(1.5f, 1.5f,
+                Math.Max(1f, button.Width - 3.5f), Math.Max(1f, button.Height - 3.5f));
+            var smoothing = args.Graphics.SmoothingMode;
+            args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = RoundedRectangle(bounds, 6f))
+            using (var brush = new SolidBrush(fill))
+            using (var pen = new Pen(border, 1f) { Alignment = PenAlignment.Inset })
+            {
+                args.Graphics.FillPath(brush, path);
+                args.Graphics.DrawPath(pen, path);
+            }
+            args.Graphics.SmoothingMode = smoothing;
         }
 
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs args)
@@ -390,8 +414,9 @@ namespace CmdsManager.Presentation.Theming
             base.OnRenderArrow(args);
         }
 
-        private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
+        private static GraphicsPath RoundedRectangle(RectangleF bounds, float radius)
         {
+            radius = Math.Max(1f, Math.Min(radius, Math.Min(bounds.Width, bounds.Height) / 2f));
             var diameter = radius * 2;
             var path = new GraphicsPath();
             path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);

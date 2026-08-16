@@ -44,11 +44,7 @@ namespace CmdsManager.Presentation.Theming
                         graphics.DrawLine(pen, 7.4f, 11.4f, 3, 12.5f);
                         break;
                     case ToolbarIcon.Delete:
-                        graphics.DrawLine(pen, 4, 5, 12, 5);
-                        graphics.DrawLine(pen, 6, 3, 10, 3);
-                        graphics.DrawRectangle(pen, 5, 5, 6, 8);
-                        graphics.DrawLine(pen, 7, 7, 7, 11);
-                        graphics.DrawLine(pen, 9, 7, 9, 11);
+                        DrawTrash(graphics, pen);
                         break;
                     case ToolbarIcon.Start:
                         DrawPlay(graphics, brush, 4, 3, 9, 10);
@@ -70,17 +66,8 @@ namespace CmdsManager.Presentation.Theming
                         graphics.DrawLine(pen, 13.5f, 4.5f, 10.5f, 5f);
                         break;
                     case ToolbarIcon.Settings:
-                        graphics.DrawEllipse(pen, 5.5f, 5.5f, 5, 5);
-                        graphics.DrawEllipse(pen, 2.5f, 2.5f, 11, 11);
-                        for (var index = 0; index < 8; index++)
-                        {
-                            var angle = index * Math.PI / 4d;
-                            var x1 = 8f + (float)Math.Cos(angle) * 5.3f;
-                            var y1 = 8f + (float)Math.Sin(angle) * 5.3f;
-                            var x2 = 8f + (float)Math.Cos(angle) * 7f;
-                            var y2 = 8f + (float)Math.Sin(angle) * 7f;
-                            graphics.DrawLine(pen, x1, y1, x2, y2);
-                        }
+                        graphics.DrawPolygon(pen, GearPoints());
+                        graphics.DrawEllipse(pen, 5.8f, 5.8f, 4.4f, 4.4f);
                         break;
                     case ToolbarIcon.About:
                         graphics.DrawEllipse(pen, 2.5f, 2.5f, 11, 11);
@@ -108,6 +95,60 @@ namespace CmdsManager.Presentation.Theming
                 new PointF(x, y + height),
                 new PointF(x + width, y + height / 2f)
             });
+        }
+
+        private static void DrawTrash(Graphics graphics, Pen pen)
+        {
+            graphics.DrawLine(pen, 2.3f, 4.3f, 13.7f, 4.3f);
+
+            using (var handle = new GraphicsPath())
+            {
+                handle.StartFigure();
+                handle.AddLine(5.5f, 4.2f, 5.5f, 2.9f);
+                handle.AddBezier(5.5f, 2.9f, 5.5f, 2.1f, 6.1f, 1.5f, 6.9f, 1.5f);
+                handle.AddLine(6.9f, 1.5f, 9.1f, 1.5f);
+                handle.AddBezier(9.1f, 1.5f, 9.9f, 1.5f, 10.5f, 2.1f, 10.5f, 2.9f);
+                handle.AddLine(10.5f, 2.9f, 10.5f, 4.2f);
+                graphics.DrawPath(pen, handle);
+            }
+
+            using (var body = new GraphicsPath())
+            {
+                body.StartFigure();
+                body.AddLine(3.5f, 4.5f, 3.5f, 12.7f);
+                body.AddBezier(3.5f, 12.7f, 3.5f, 13.8f, 4.2f, 14.5f, 5.3f, 14.5f);
+                body.AddLine(5.3f, 14.5f, 10.7f, 14.5f);
+                body.AddBezier(10.7f, 14.5f, 11.8f, 14.5f, 12.5f, 13.8f, 12.5f, 12.7f);
+                body.AddLine(12.5f, 12.7f, 12.5f, 4.5f);
+                graphics.DrawPath(pen, body);
+            }
+
+            graphics.DrawLine(pen, 6.5f, 7.2f, 6.5f, 11.4f);
+            graphics.DrawLine(pen, 9.5f, 7.2f, 9.5f, 11.4f);
+        }
+
+        private static PointF[] GearPoints()
+        {
+            const int teeth = 8;
+            const float center = 8f;
+            const float rootRadius = 5.15f;
+            const float toothRadius = 6.55f;
+            var points = new PointF[teeth * 4];
+            for (var tooth = 0; tooth < teeth; tooth++)
+            {
+                var centerAngle = -Math.PI / 2d + tooth * Math.PI * 2d / teeth;
+                SetPolarPoint(points, tooth * 4, centerAngle - Math.PI / 8d, rootRadius, center);
+                SetPolarPoint(points, tooth * 4 + 1, centerAngle - Math.PI / 18d, toothRadius, center);
+                SetPolarPoint(points, tooth * 4 + 2, centerAngle + Math.PI / 18d, toothRadius, center);
+                SetPolarPoint(points, tooth * 4 + 3, centerAngle + Math.PI / 8d, rootRadius, center);
+            }
+            return points;
+        }
+
+        private static void SetPolarPoint(PointF[] points, int index, double angle, float radius, float center)
+        {
+            points[index] = new PointF(center + (float)Math.Cos(angle) * radius,
+                center + (float)Math.Sin(angle) * radius);
         }
     }
 }

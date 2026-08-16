@@ -97,7 +97,7 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run
 Скрипт выполняет Release-сборку, запускает тестовый EXE и создаёт:
 
 ```text
-artifacts\CmdsManager-portable-0.6.0-win-x64.zip
+artifacts\CmdsManager-portable-0.6.1-win-x64.zip
 ```
 
 Пропустить тесты можно только явно:

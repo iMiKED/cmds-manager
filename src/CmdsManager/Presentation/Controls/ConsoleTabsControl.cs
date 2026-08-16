@@ -186,6 +186,8 @@ namespace CmdsManager.Presentation.Controls
         {
             _applicationTheme = theme;
             var palette = AppThemeManager.Resolve(theme);
+            _tabStrip.BackColor = palette.Header;
+            _tabStrip.Invalidate();
             AppThemeManager.ApplyToolStrip(_menu, palette);
             foreach (var session in _sessions.Values)
             {

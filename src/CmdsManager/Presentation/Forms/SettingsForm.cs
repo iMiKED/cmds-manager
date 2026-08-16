@@ -200,6 +200,7 @@ namespace CmdsManager.Presentation.Forms
         private Control WithFontButton()
         {
             _fontDisplay.Dock = DockStyle.Fill;
+            _fontDisplay.Margin = Padding.Empty;
             var panel = TwoColumnPanel();
             var choose = new Button { Text = _text["Settings.ChooseFont"], AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
             choose.Click += (sender, args) =>
@@ -224,6 +225,7 @@ namespace CmdsManager.Presentation.Forms
         private Control WithFileButton(TextBox textBox, string filter)
         {
             textBox.Dock = DockStyle.Fill;
+            textBox.Margin = Padding.Empty;
             var panel = TwoColumnPanel();
             var browse = new Button { Text = _text["Common.Browse"], AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
             browse.Click += (sender, args) =>
