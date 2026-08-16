@@ -35,6 +35,8 @@ namespace CmdsManager.Tests
             Run("Compact localized dialogs", TestCompactLocalizedDialogs);
             Run("Batched console output", TestBatchedConsoleOutput);
             Run("Running script visual indicator", TestRunningVisualIndicator);
+            Run("Managed child CMD tabs", TestManagedChildCmdTabs);
+            Run("Transformed START command IPC", TestTransformedStartCommandIpc);
             Run("Single-instance command IPC", TestSingleInstanceCommandIpc);
             Run("Job Object stops child processes", TestProcessTreeStop);
 
@@ -123,8 +125,21 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(2, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(3, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
+
+                var version2Path = Path.Combine(directory, "Version2.ini");
+                File.WriteAllText(version2Path,
+                    "[Application]\r\nConfigVersion=2\r\n" +
+                    "[Strings.en]\r\nScript.Encoding.Auto=Auto (Windows OEM)\r\n" +
+                    "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
+                    new UTF8Encoding(false));
+                var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
+                Equal(3, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal("Auto (UTF-8/Windows OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
+                    "old default English Auto label is migrated");
+                Equal("Авто (UTF-8/OEM Windows)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
+                    "old default Russian Auto label is migrated");
             });
         }
 
@@ -155,6 +170,41 @@ namespace CmdsManager.Tests
                 Assert(File.Exists(spec.ExecutablePath), "cmd.exe exists");
                 Assert(spec.Arguments.Contains("script with spaces.cmd"), "quoted script path is present");
                 Equal("\"a b\"", ScriptCommandBuilder.QuoteWindowsArgument("a b"), "Windows argument quoting");
+
+                var managerPath = Path.Combine(directory, "CmdsManager.exe");
+                var childPath = Path.Combine(directory, "start-gplay-bridge.cmd");
+                File.WriteAllBytes(managerPath, new byte[] { 0 });
+                File.WriteAllText(childPath, "@exit /b 0\r\n", Encoding.ASCII);
+                File.WriteAllText(scriptPath,
+                    "@echo off\r\nset \"ROOT_DIR=%~dp0\"\r\n" +
+                    "start \"RuStore GPlay Bridge\" /D \"%ROOT_DIR%\" cmd /k \"%ROOT_DIR%start-gplay-bridge.cmd\"\r\n",
+                    Encoding.ASCII);
+                var managedSpec = new ScriptCommandBuilder(directory, managerPath).Build(script, string.Empty);
+                try
+                {
+                    Assert(!string.IsNullOrEmpty(managedSpec.TemporaryScriptPath) && File.Exists(managedSpec.TemporaryScriptPath),
+                        "CMD script with START cmd /k receives a managed temporary copy");
+                    var transformed = File.ReadAllText(managedSpec.TemporaryScriptPath, Encoding.ASCII);
+                    Assert(transformed.Contains("CMDSMANAGER_START_LINE=") && transformed.Contains("--managed-start-env"),
+                        "START is redirected to CmdsManager IPC through CMD-safe environment transport");
+                    Assert(transformed.Contains("%ROOT_DIR%start-gplay-bridge.cmd"), "child path variables are preserved for parent CMD expansion");
+                    Equal(managerPath, Environment.GetEnvironmentVariable("CMDSMANAGER_HOST_EXE"),
+                        "manager executable is scoped to the CmdsManager process environment");
+
+                    var request = ManagedStartRequestParser.Parse(directory, new[]
+                    {
+                        "RuStore GPlay Bridge", "/D", directory, "cmd", "/k", childPath
+                    });
+                    Equal("RuStore GPlay Bridge", request.Title, "START title becomes the console tab name");
+                    Equal(childPath, request.ScriptPath, "START child script path");
+                    Equal(directory, request.WorkingDirectory, "START /D working directory");
+                    Equal(ScriptInterpreter.Cmd, request.ToScriptDefinition().Launch.Interpreter, "managed child uses CMD interpreter");
+                }
+                finally
+                {
+                    if (!string.IsNullOrEmpty(managedSpec.TemporaryScriptPath) && File.Exists(managedSpec.TemporaryScriptPath))
+                        File.Delete(managedSpec.TemporaryScriptPath);
+                }
             });
         }
 
@@ -267,6 +317,35 @@ namespace CmdsManager.Tests
                         }, pwsh);
                         Assert(lines.Any(line => line.Contains("Русский PowerShell")), interpreter + " decodes Cyrillic");
                     }
+
+                    const string chineseJson = "{\"groupDesc\":\"应用信息\",\"permissionLabel\":\"获取设备信息\"}";
+                    var writerPath = Path.Combine(directory, "write-utf8.ps1");
+                    File.WriteAllText(writerPath,
+                        "$text = '" + chineseJson + "' + [Environment]::NewLine\r\n" +
+                        "$bytes = [Text.Encoding]::UTF8.GetBytes($text)\r\n" +
+                        "$stream = [Console]::OpenStandardOutput()\r\n" +
+                        "$stream.Write($bytes, 0, $bytes.Length)\r\n$stream.Flush()\r\n",
+                        new UTF8Encoding(true));
+                    var mixedPath = Path.Combine(directory, "mixed-output.cmd");
+                    var windowsPowerShell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+                    File.WriteAllText(mixedPath,
+                        "@echo off\r\necho " + oemPhrase + "\r\n\"" + windowsPowerShell +
+                        "\" -NoLogo -NoProfile -ExecutionPolicy Bypass -File \"" + writerPath + "\"\r\n", oem);
+                    var mixedLines = RunAndCapture(directory, new ScriptDefinition
+                    {
+                        Name = "Mixed OEM and UTF-8",
+                        Path = mixedPath,
+                        Launch = new LaunchProfile
+                        {
+                            Interpreter = ScriptInterpreter.Cmd,
+                            OutputEncoding = ScriptOutputEncoding.Auto,
+                            WorkingDirectory = directory,
+                            CaptureOutput = true
+                        }
+                    });
+                    Assert(mixedLines.Any(line => line.Contains(oemPhrase)), "Auto keeps OEM lines in a mixed stream");
+                    Assert(mixedLines.Any(line => line.Contains("应用信息") && line.Contains("获取设备信息")),
+                        "Auto detects UTF-8 Chinese JSON lines inside a CMD stream");
                 }
 
                 var utf8Path = Path.Combine(directory, "russian-utf8.cmd");
@@ -348,11 +427,38 @@ namespace CmdsManager.Tests
                 using (var settings = new SettingsForm(configuration.Application, configuration.PowerShell7Path, configuration.Localization, text))
                 using (var script = new ScriptEditorForm(null, configuration.Defaults, directory, text))
                 {
+                    var aboutHandle = about.Handle;
+                    var settingsHandle = settings.Handle;
+                    var scriptHandle = script.Handle;
+                    about.PerformLayout();
+                    settings.PerformLayout();
+                    script.PerformLayout();
                     Assert(about.ClientSize.Width <= 400 && about.ClientSize.Height <= 180, "About box is compact");
-                    Assert(settings.ClientSize.Width <= 600 && settings.ClientSize.Height <= 370, "settings dialog is compact");
-                    Assert(script.ClientSize.Width <= 630 && script.ClientSize.Height <= 430, "script editor is compact");
+                    Assert(settings.ClientSize.Width <= 530 && settings.ClientSize.Height <= 340, "settings dialog is narrower and compact");
+                    Assert(script.ClientSize.Width <= 550 && script.ClientSize.Height <= 415, "script editor is narrower and compact");
                     Equal("About", about.Text, "English About title comes from INI strings");
                     Equal("CmdsManager settings", settings.Text, "English settings title comes from INI strings");
+                    Assert(!AllControls(settings).OfType<ScrollableControl>().Any(control => control.AutoScroll),
+                        "settings dialog has no AutoScroll container");
+                    Assert(!AllControls(script).OfType<ScrollableControl>().Any(control => control.AutoScroll),
+                        "script editor has no AutoScroll container");
+                    var retention = AllControls(settings).OfType<NumericUpDown>().Single();
+                    Assert(retention.Width <= 80, "log retention field is sized for its value");
+                    var numeric = AllControls(script).OfType<NumericUpDown>().ToArray();
+                    Equal(3, numeric.Length, "script editor has three compact numeric settings");
+                    Assert(numeric.All(control => control.Width <= 65) && numeric.Select(control => control.Parent).Distinct().Count() == 1,
+                        "order, delay, and timeout fields share one compact row");
+                    Assert(!AllControls(script).OfType<TabControl>().Any(), "launch settings are on the same page instead of a second tab");
+                    var encodingLabel = AllControls(script).OfType<Label>().First(control => control.Text == text["Script.Encoding"]);
+                    Assert(encodingLabel.Parent is FlowLayoutPanel && encodingLabel.Parent.Controls.OfType<ComboBox>().Any(),
+                        "output encoding label is beside its drop-down");
+                    var author = AllControls(about).OfType<LinkLabel>().Single(control => control.Text.StartsWith("iMiKED from 4PDA", StringComparison.Ordinal));
+                    Equal("https://github.com/iMiKED", Convert.ToString(author.Links[0].LinkData), "hard-coded author link");
+                    Assert(AllControls(about).OfType<PictureBox>().Any(control => control.Image != null), "About contains the application icon");
+                    Assert(typeof(MainForm).Assembly.GetManifestResourceNames().Contains("CmdsManager.Assets.CmdsManager.ico"),
+                        "application icon is embedded in the executable");
+                    Assert(!configuration.Localization.Languages.Values.Any(values => values.Values.Contains("iMiKED from 4PDA")),
+                        "author line is not configurable through INI");
                 }
             });
         }
@@ -494,11 +600,19 @@ namespace CmdsManager.Tests
                     var runtime = supervisor.GetSnapshot(script.Id);
                     var cells = string.Join(", ", grid.Columns.Cast<DataGridViewColumn>()
                         .Select(column => column.Name + "='" + Convert.ToString(row.Cells[column.Name].Value) + "'"));
-                    Assert(marker == "●" || marker == "◉", "running script has a filled activity marker; actual marker is '" +
+                    Assert(marker == "●", "running script has a static filled activity marker; actual marker is '" +
                         marker + "', runtime is " + runtime.State + ", cells: " + cells);
                     Equal(Color.FromArgb(234, 248, 239), row.DefaultCellStyle.BackColor, "running row has a pale green background");
                     Assert(row.Cells["Activity"].Style.ForeColor.G > row.Cells["Activity"].Style.ForeColor.R,
                         "running activity marker is green");
+                    var stableUntil = Stopwatch.StartNew();
+                    while (stableUntil.Elapsed < TimeSpan.FromMilliseconds(1100))
+                    {
+                        System.Windows.Forms.Application.DoEvents();
+                        Thread.Sleep(10);
+                    }
+                    row = grid.Rows.Cast<DataGridViewRow>().First(item => script.Id.Equals(item.Tag));
+                    Equal("●", Convert.ToString(row.Cells["Activity"].Value), "running marker does not blink");
 
                     supervisor.StopAsync(script.Id).GetAwaiter().GetResult();
                     elapsed.Restart();
@@ -513,6 +627,148 @@ namespace CmdsManager.Tests
                     }
                     Equal("○", marker, "stopped script has an inactive marker");
                 }
+            });
+        }
+
+        private static void TestManagedChildCmdTabs()
+        {
+            WithTemporaryDirectory(directory =>
+            {
+                var parentPath = Path.Combine(directory, "parent.cmd");
+                var childPath = Path.Combine(directory, "start-gplay-bridge.cmd");
+                File.WriteAllText(parentPath, "@echo off\r\necho parent-output\r\nping.exe -n 20 127.0.0.1 >nul\r\n", Encoding.ASCII);
+                File.WriteAllText(childPath, "@echo off\r\necho managed-child-output\r\nping.exe -n 20 127.0.0.1 >nul\r\n", Encoding.ASCII);
+                var store = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini"));
+                var configuration = store.LoadOrCreate();
+                configuration.Localization.Language = "en";
+                var parent = new ScriptDefinition
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Parent script",
+                    Path = parentPath,
+                    Launch = new LaunchProfile
+                    {
+                        Interpreter = ScriptInterpreter.Cmd,
+                        WorkingDirectory = directory,
+                        CaptureOutput = true,
+                        StopPolicy = ScriptStopPolicy.Kill,
+                        StopTimeoutSeconds = 0
+                    }
+                };
+                configuration.Scripts.Add(parent);
+                var state = new ConfigurationState(configuration);
+                var text = new LocalizationService(state);
+                var commandBuilder = new ScriptCommandBuilder(directory);
+
+                using (var logger = new SimpleFileLogger(Path.Combine(directory, "logs"), 1))
+                using (var supervisor = new ProcessSupervisor(commandBuilder, logger, () => false))
+                using (var form = new MainForm(state, store, supervisor,
+                    new WindowsScriptEditorLauncher(commandBuilder), new NoOpStartupRegistration(), logger, text))
+                {
+                    var formHandle = form.Handle;
+                    var console = FindControl<ConsoleTabsControl>(form);
+                    var tabs = FindControl<TabControl>(console);
+                    var grid = FindControl<DataGridView>(form);
+                    supervisor.Start(parent, string.Empty);
+                    Assert(WaitWithUi(() => tabs.TabPages.Count == 1, TimeSpan.FromSeconds(4)), "parent console tab appears");
+
+                    form.RunManagedChild(directory, new[]
+                    {
+                        "RuStore GPlay Bridge", "/D", directory, "cmd", "/k", childPath
+                    });
+                    Assert(WaitWithUi(() => tabs.TabPages.Count == 2 &&
+                        tabs.TabPages.Cast<TabPage>().Any(page => page.Text.Contains("RuStore GPlay Bridge")), TimeSpan.FromSeconds(4)),
+                        "START cmd /k child appears in a neighboring tab");
+                    var childPage = tabs.TabPages.Cast<TabPage>().First(page => page.Text.Contains("RuStore GPlay Bridge"));
+                    Assert(WaitWithUi(() => childPage.Controls.OfType<RichTextBox>().Any(output => output.Text.Contains("managed-child-output")),
+                        TimeSpan.FromSeconds(4)), "managed child output is captured in its own tab");
+                    Equal(TabDrawMode.OwnerDrawFixed, tabs.DrawMode, "console tabs draw a close button");
+
+                    grid.ClearSelection();
+                    var parentRow = grid.Rows.Cast<DataGridViewRow>().First(row => parent.Id.Equals(row.Tag));
+                    parentRow.Selected = true;
+                    grid.CurrentCell = parentRow.Cells["Name"];
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(tabs.SelectedTab.Text.Contains("Parent script"), "selecting a grid row selects its console tab");
+
+                    ConsoleTabCloseRequestedEventArgs closeRequest = null;
+                    console.CloseRequested += (sender, args) => closeRequest = args;
+                    tabs.SelectedTab = childPage;
+                    var closeItem = tabs.ContextMenuStrip.Items.OfType<ToolStripMenuItem>().Last();
+                    closeItem.PerformClick();
+                    Assert(closeRequest != null && closeRequest.IsRunning, "closing a running tab requests process stop");
+                    Assert(WaitWithUi(() => !supervisor.IsRunning(closeRequest.ScriptId), TimeSpan.FromSeconds(5)),
+                        "closing the child tab stops its exact managed process");
+                    Assert(!tabs.TabPages.Cast<TabPage>().Contains(childPage), "closed child tab is removed");
+
+                    supervisor.StopAsync(parent.Id).GetAwaiter().GetResult();
+                    Assert(SpinWait.SpinUntil(() => !supervisor.IsRunning(parent.Id), TimeSpan.FromSeconds(5)), "parent script stops after tab test");
+                }
+            });
+        }
+
+        private static void TestTransformedStartCommandIpc()
+        {
+            WithTemporaryDirectory(directory =>
+            {
+                var parentPath = Path.Combine(directory, "start-all.cmd");
+                var childPath = Path.Combine(directory, "start-gplay-bridge.cmd");
+                File.WriteAllText(childPath, "@exit /b 0\r\n", Encoding.ASCII);
+                File.WriteAllText(parentPath,
+                    "@echo off\r\nset \"ROOT_DIR=%~dp0\"\r\n" +
+                    "start \"RuStore GPlay Bridge\" /D \"%ROOT_DIR%\" cmd /k \"%ROOT_DIR%start-gplay-bridge.cmd\"\r\n",
+                    Encoding.ASCII);
+                var parent = new ScriptDefinition
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "START IPC parent",
+                    Path = parentPath,
+                    Launch = new LaunchProfile
+                    {
+                        Interpreter = ScriptInterpreter.Cmd,
+                        WorkingDirectory = directory,
+                        CaptureOutput = true
+                    }
+                };
+                var commandReceived = new ManualResetEventSlim(false);
+                var parentExited = new ManualResetEventSlim(false);
+                var command = string.Empty;
+                using (var primary = new SingleInstanceGuard())
+                {
+                    Assert(primary.IsPrimaryInstance, "test process owns the CmdsManager instance guard");
+                    primary.StartListening(() => { }, value =>
+                    {
+                        command = value;
+                        commandReceived.Set();
+                    });
+                    using (var logger = new SimpleFileLogger(Path.Combine(directory, "logs"), 1))
+                    using (var supervisor = new ProcessSupervisor(
+                        new ScriptCommandBuilder(directory, typeof(MainForm).Assembly.Location), logger, () => false))
+                    {
+                        supervisor.StateChanged += (sender, args) =>
+                        {
+                            if (args.Snapshot.ScriptId == parent.Id && args.Snapshot.State == ScriptRuntimeState.Exited)
+                                parentExited.Set();
+                        };
+                        supervisor.Start(parent, string.Empty);
+                        Assert(commandReceived.Wait(TimeSpan.FromSeconds(8)), "transformed START invokes the primary command pipe");
+                        Assert(parentExited.Wait(TimeSpan.FromSeconds(8)), "parent script waits for the IPC helper and exits");
+                    }
+                }
+
+                Assert(command.StartsWith("START ", StringComparison.Ordinal), "managed START uses a dedicated IPC command");
+                var values = Encoding.UTF8.GetString(Convert.FromBase64String(command.Substring(6))).Split('\0');
+                ManagedStartRequest request;
+                try { request = ManagedStartRequestParser.Parse(values[0], values.Skip(1)); }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException("Managed START IPC arguments: " +
+                        string.Join(" | ", values.Select(value => "[" + value + "]")), exception);
+                }
+                Equal("RuStore GPlay Bridge", request.Title, "IPC preserves the START window title");
+                Equal(childPath, request.ScriptPath, "IPC preserves the expanded child path");
+                Assert(!Directory.GetFiles(directory, ".start-all.cmdsmanager-*.cmd").Any(),
+                    "temporary transformed parent script is removed after execution");
             });
         }
 
@@ -663,6 +919,26 @@ namespace CmdsManager.Tests
                 if (match != null) return match;
             }
             return null;
+        }
+
+        private static IEnumerable<Control> AllControls(Control root)
+        {
+            yield return root;
+            foreach (Control child in root.Controls)
+                foreach (var descendant in AllControls(child)) yield return descendant;
+        }
+
+        private static bool WaitWithUi(Func<bool> condition, TimeSpan timeout)
+        {
+            var elapsed = Stopwatch.StartNew();
+            while (elapsed.Elapsed < timeout)
+            {
+                System.Windows.Forms.Application.DoEvents();
+                if (condition()) return true;
+                Thread.Sleep(10);
+            }
+            System.Windows.Forms.Application.DoEvents();
+            return condition();
         }
 
         private sealed class NoOpStartupRegistration : IApplicationStartupRegistration

@@ -17,6 +17,12 @@ namespace CmdsManager
 {
     internal static class Program
     {
+        private sealed class ManagedStartInvocation
+        {
+            internal string ParentWorkingDirectory { get; set; }
+            internal string[] Arguments { get; set; }
+        }
+
         [STAThread]
         private static void Main(string[] args)
         {
@@ -26,9 +32,11 @@ namespace CmdsManager
 
             var actualArgs = args ?? new string[0];
             string runRequest;
+            ManagedStartInvocation managedStart;
             try
             {
                 runRequest = ResolveRunRequest(actualArgs);
+                managedStart = ResolveManagedStart(actualArgs);
             }
             catch (Exception exception)
             {
@@ -40,7 +48,10 @@ namespace CmdsManager
             {
                 if (!instance.IsPrimaryInstance)
                 {
-                    if (runRequest == null || !instance.SendCommand(BuildRunCommand(runRequest)))
+                    var command = managedStart != null
+                        ? BuildManagedStartCommand(managedStart)
+                        : runRequest != null ? BuildRunCommand(runRequest) : null;
+                    if (command == null || !instance.SendCommand(command))
                     {
                         instance.SignalPrimaryInstance();
                     }
@@ -49,7 +60,7 @@ namespace CmdsManager
 
                 try
                 {
-                    RunPrimaryInstance(actualArgs, instance, runRequest);
+                    RunPrimaryInstance(actualArgs, instance, runRequest, managedStart);
                 }
                 catch (Exception exception)
                 {
@@ -62,7 +73,8 @@ namespace CmdsManager
             }
         }
 
-        private static void RunPrimaryInstance(string[] args, SingleInstanceGuard instance, string initialRunRequest)
+        private static void RunPrimaryInstance(string[] args, SingleInstanceGuard instance, string initialRunRequest,
+            ManagedStartInvocation initialManagedStart)
         {
             var automaticallyStarted = args.Any(value => value.Equals("--autostart", StringComparison.OrdinalIgnoreCase));
             var configPath = ResolveConfigurationPath(args);
@@ -82,7 +94,7 @@ namespace CmdsManager
                     startup.Synchronize(configuration.Application.StartWithWindows);
                 }
 
-                var commandBuilder = new ScriptCommandBuilder(configDirectory);
+                var commandBuilder = new ScriptCommandBuilder(configDirectory, WinFormsApplication.ExecutablePath);
                 var editor = new WindowsScriptEditorLauncher(commandBuilder);
                 using (var supervisor = new ProcessSupervisor(commandBuilder, log, () => state.Current.Application.LogScriptOutput))
                 using (var mainForm = new MainForm(state, store, supervisor, editor, startup, log, text))
@@ -102,6 +114,10 @@ namespace CmdsManager
                     if (!string.IsNullOrWhiteSpace(initialRunRequest))
                     {
                         context.HandleExternalCommand(BuildRunCommand(initialRunRequest));
+                    }
+                    if (initialManagedStart != null)
+                    {
+                        context.HandleExternalCommand(BuildManagedStartCommand(initialManagedStart));
                     }
                     WinFormsApplication.Run(context);
                 }
@@ -153,6 +169,72 @@ namespace CmdsManager
         private static string BuildRunCommand(string selector)
         {
             return "RUN " + Convert.ToBase64String(Encoding.UTF8.GetBytes(selector ?? string.Empty));
+        }
+
+        private static ManagedStartInvocation ResolveManagedStart(string[] args)
+        {
+            for (var index = 0; index < args.Length; index++)
+            {
+                if (args[index].Equals("--managed-start-env", StringComparison.OrdinalIgnoreCase))
+                {
+                    var parent = Environment.GetEnvironmentVariable("CMDSMANAGER_START_CWD");
+                    var line = Environment.GetEnvironmentVariable("CMDSMANAGER_START_LINE");
+                    if (string.IsNullOrWhiteSpace(parent) || string.IsNullOrWhiteSpace(line))
+                        throw new ArgumentException("Для --managed-start-env не заданы параметры дочернего START.");
+                    return new ManagedStartInvocation
+                    {
+                        ParentWorkingDirectory = parent,
+                        Arguments = SplitCmdArguments(line)
+                    };
+                }
+                if (!args[index].Equals("--managed-start-from", StringComparison.OrdinalIgnoreCase)) continue;
+                if (index + 2 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+                    throw new ArgumentException("После --managed-start-from необходимо указать рабочую папку и аргументы START.");
+                return new ManagedStartInvocation
+                {
+                    ParentWorkingDirectory = args[index + 1],
+                    Arguments = args.Skip(index + 2).ToArray()
+                };
+            }
+            return null;
+        }
+
+        private static string[] SplitCmdArguments(string commandLine)
+        {
+            var result = new System.Collections.Generic.List<string>();
+            var current = new StringBuilder();
+            var quoted = false;
+            var started = false;
+            foreach (var character in commandLine ?? string.Empty)
+            {
+                if (character == '"')
+                {
+                    quoted = !quoted;
+                    started = true;
+                    continue;
+                }
+                if (!quoted && char.IsWhiteSpace(character))
+                {
+                    if (started)
+                    {
+                        result.Add(current.ToString());
+                        current.Clear();
+                        started = false;
+                    }
+                    continue;
+                }
+                current.Append(character);
+                started = true;
+            }
+            if (started) result.Add(current.ToString());
+            return result.ToArray();
+        }
+
+        private static string BuildManagedStartCommand(ManagedStartInvocation invocation)
+        {
+            var values = new[] { invocation.ParentWorkingDirectory ?? string.Empty }
+                .Concat(invocation.Arguments ?? new string[0]);
+            return "START " + Convert.ToBase64String(Encoding.UTF8.GetBytes(string.Join("\0", values)));
         }
     }
 }

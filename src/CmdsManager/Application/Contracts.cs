@@ -67,4 +67,18 @@ namespace CmdsManager.Application
         public bool CapturesOutput { get; }
         public int? ExitCode { get; }
     }
+
+    public sealed class ConsoleTabCloseRequestedEventArgs : EventArgs
+    {
+        public ConsoleTabCloseRequestedEventArgs(Guid scriptId, int processId, bool isRunning)
+        {
+            ScriptId = scriptId;
+            ProcessId = processId;
+            IsRunning = isRunning;
+        }
+
+        public Guid ScriptId { get; }
+        public int ProcessId { get; }
+        public bool IsRunning { get; }
+    }
 }

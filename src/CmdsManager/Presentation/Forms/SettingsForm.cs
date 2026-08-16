@@ -19,7 +19,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly TextBox _editorPath = new TextBox();
         private readonly TextBox _editorArguments = new TextBox();
         private readonly TextBox _powerShell7Path = new TextBox();
-        private readonly NumericUpDown _retention = new NumericUpDown { Minimum = 1, Maximum = 3650 };
+        private readonly NumericUpDown _retention = new NumericUpDown { Minimum = 1, Maximum = 3650, Width = 72, TextAlign = HorizontalAlignment.Right };
         private readonly ComboBox _language = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly TextBox _fontDisplay = new TextBox { ReadOnly = true };
         private string _fontName;
@@ -36,8 +36,8 @@ namespace CmdsManager.Presentation.Forms
             MaximizeBox = false;
             ShowInTaskbar = false;
             FormBorderStyle = FormBorderStyle.FixedDialog;
-            ClientSize = new Size(580, 350);
-            Icon = SystemIcons.Application;
+            ClientSize = new Size(520, 330);
+            Icon = ApplicationResources.Icon;
 
             _startWithWindows.Text = _text["Settings.StartWithWindows"];
             _startMinimized.Text = _text["Settings.StartMinimized"];
@@ -57,7 +57,7 @@ namespace CmdsManager.Presentation.Forms
             AddRow(general, string.Empty, new Label
             {
                 AutoSize = true,
-                MaximumSize = new Size(390, 0),
+                MaximumSize = new Size(335, 0),
                 ForeColor = SystemColors.GrayText,
                 Text = _text["Settings.Warning"]
             });
@@ -67,7 +67,7 @@ namespace CmdsManager.Presentation.Forms
             AddRow(tools, _text["Settings.EditorArguments"], _editorArguments);
             AddRow(tools, _text["Settings.PowerShell7"], WithFileButton(_powerShell7Path, _text["Settings.PowerShellFilter"]));
             AddRow(tools, _text["Settings.Retention"], _retention);
-            AddRow(tools, string.Empty, _logScriptOutput);
+            AddFullRow(tools, _logScriptOutput);
 
             var tabs = new TabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(Page(_text["Settings.Tab.General"], general));
@@ -195,8 +195,8 @@ namespace CmdsManager.Presentation.Forms
 
         private static TableLayoutPanel CreateTable()
         {
-            var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(8), AutoScroll = true, ColumnCount = 2, RowCount = 0 };
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+            var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(8), AutoScroll = false, ColumnCount = 2, RowCount = 0 };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             return table;
         }
@@ -221,9 +221,24 @@ namespace CmdsManager.Presentation.Forms
             var row = table.RowCount++;
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             table.Controls.Add(new Label { Text = labelText, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(2, 6, 6, 5) }, 0, row);
-            control.Dock = control is CheckBox || control is Label ? DockStyle.Top : DockStyle.Fill;
+            if (control is NumericUpDown)
+            {
+                control.Dock = DockStyle.None;
+                control.Anchor = AnchorStyles.Left;
+            }
+            else control.Dock = control is CheckBox || control is Label ? DockStyle.Top : DockStyle.Fill;
             control.Margin = new Padding(2, 2, 2, 3);
             table.Controls.Add(control, 1, row);
+        }
+
+        private static void AddFullRow(TableLayoutPanel table, Control control)
+        {
+            var row = table.RowCount++;
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            control.Dock = DockStyle.Top;
+            control.Margin = new Padding(2, 3, 2, 3);
+            table.Controls.Add(control, 0, row);
+            table.SetColumnSpan(control, 2);
         }
 
         private static void SelectValue<T>(ComboBox combo, T value)

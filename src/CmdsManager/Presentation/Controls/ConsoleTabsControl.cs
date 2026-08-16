@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using CmdsManager.Application;
@@ -35,6 +36,7 @@ namespace CmdsManager.Presentation.Controls
             internal string ScriptName { get; set; }
             internal int ProcessId { get; set; }
             internal int? ExitCode { get; set; }
+            internal DateTime StartedAt { get; set; }
             internal TabPage Page { get; set; }
             internal RichTextBox Output { get; set; }
         }
@@ -70,10 +72,17 @@ namespace CmdsManager.Presentation.Controls
                 var session = SelectedSession;
                 _clearItem.Enabled = session != null && session.Output.TextLength > 0;
                 _closeItem.Enabled = session != null;
+                _closeItem.Text = session != null && !session.ExitCode.HasValue
+                    ? _text["Console.CloseAndStop"]
+                    : _text["Console.CloseTab"];
             };
             _clearItem.Click += (sender, args) => SelectedSession?.Output.Clear();
             _closeItem.Click += (sender, args) => CloseSelectedTab();
             _tabs.ContextMenuStrip = _menu;
+            _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
+            _tabs.Padding = new Point(15, 4);
+            _tabs.DrawItem += DrawTab;
+            _tabs.MouseDown += HandleTabMouseDown;
 
             Controls.Add(_tabs);
             Controls.Add(_empty);
@@ -86,6 +95,8 @@ namespace CmdsManager.Presentation.Controls
             ApplyLocalization();
             UpdateEmptyState();
         }
+
+        public event EventHandler<ConsoleTabCloseRequestedEventArgs> CloseRequested;
 
         public void EnqueueStarted(ScriptInstanceEventArgs args)
         {
@@ -140,6 +151,22 @@ namespace CmdsManager.Presentation.Controls
             previous?.Dispose();
         }
 
+        public void SelectScript(Guid scriptId)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke((Action)(() => SelectScript(scriptId)));
+                return;
+            }
+
+            FlushPendingOutput();
+            var session = _sessions.Values.Where(item => item.ScriptId == scriptId)
+                .OrderBy(item => item.ExitCode.HasValue)
+                .ThenByDescending(item => item.StartedAt)
+                .FirstOrDefault();
+            if (session != null) _tabs.SelectedTab = session.Page;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -170,7 +197,7 @@ namespace CmdsManager.Presentation.Controls
                 if (item.Kind == ConsoleEventKind.Started)
                 {
                     _suppressedProcesses.Remove(item.Instance.ProcessId);
-                    var started = EnsureSession(item.Instance.ProcessId, item.Instance.ScriptId, item.Instance.ScriptName);
+                    var started = EnsureSession(item.Instance.ProcessId, item.Instance.ScriptId, item.Instance.ScriptName, item.Instance.StartedAt);
                     _tabs.SelectedTab = started.Page;
                     continue;
                 }
@@ -192,7 +219,7 @@ namespace CmdsManager.Presentation.Controls
                     continue;
                 }
 
-                var session = EnsureSession(item.Output.ProcessId, item.Output.ScriptId, string.Empty);
+                var session = EnsureSession(item.Output.ProcessId, item.Output.ScriptId, string.Empty, null);
                 StringBuilder builder;
                 if (!batches.TryGetValue(item.Output.ProcessId, out builder))
                 {
@@ -217,7 +244,7 @@ namespace CmdsManager.Presentation.Controls
             UpdateEmptyState();
         }
 
-        private ConsoleSession EnsureSession(int processId, Guid scriptId, string scriptName)
+        private ConsoleSession EnsureSession(int processId, Guid scriptId, string scriptName, DateTime? startedAt)
         {
             ConsoleSession existing;
             if (_sessions.TryGetValue(processId, out existing))
@@ -225,6 +252,7 @@ namespace CmdsManager.Presentation.Controls
                 if (!string.IsNullOrWhiteSpace(scriptName))
                 {
                     existing.ScriptName = scriptName;
+                    if (startedAt.HasValue) existing.StartedAt = startedAt.Value;
                     UpdateTabTitle(existing);
                 }
 
@@ -251,6 +279,7 @@ namespace CmdsManager.Presentation.Controls
                 ScriptId = scriptId,
                 ScriptName = string.IsNullOrWhiteSpace(scriptName) ? "PID " + processId : scriptName,
                 ProcessId = processId,
+                StartedAt = startedAt ?? DateTime.Now,
                 Page = page,
                 Output = output
             };
@@ -295,11 +324,55 @@ namespace CmdsManager.Presentation.Controls
                 return;
             }
 
+            CloseSession(session);
+        }
+
+        private void CloseSession(ConsoleSession session)
+        {
+            var isRunning = !session.ExitCode.HasValue;
             _suppressedProcesses.Add(session.ProcessId);
             _sessions.Remove(session.ProcessId);
             _tabs.TabPages.Remove(session.Page);
             session.Page.Dispose();
             UpdateEmptyState();
+            CloseRequested?.Invoke(this, new ConsoleTabCloseRequestedEventArgs(session.ScriptId, session.ProcessId, isRunning));
+        }
+
+        private void DrawTab(object sender, DrawItemEventArgs args)
+        {
+            if (args.Index < 0 || args.Index >= _tabs.TabPages.Count) return;
+            var bounds = _tabs.GetTabRect(args.Index);
+            var selected = args.Index == _tabs.SelectedIndex;
+            using (var background = new SolidBrush(selected ? SystemColors.Window : SystemColors.Control))
+                args.Graphics.FillRectangle(background, bounds);
+
+            var closeBounds = CloseBounds(bounds);
+            var textBounds = new Rectangle(bounds.Left + 7, bounds.Top + 2,
+                Math.Max(0, closeBounds.Left - bounds.Left - 9), bounds.Height - 4);
+            TextRenderer.DrawText(args.Graphics, _tabs.TabPages[args.Index].Text, _tabs.Font, textBounds,
+                SystemColors.ControlText, TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(args.Graphics, "×", _tabs.Font, closeBounds, Color.Firebrick,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            if (selected) ControlPaint.DrawBorder(args.Graphics, bounds, SystemColors.ControlDark, ButtonBorderStyle.Solid);
+        }
+
+        private void HandleTabMouseDown(object sender, MouseEventArgs args)
+        {
+            if (args.Button != MouseButtons.Left) return;
+            for (var index = 0; index < _tabs.TabPages.Count; index++)
+            {
+                if (!CloseBounds(_tabs.GetTabRect(index)).Contains(args.Location)) continue;
+                _tabs.SelectedIndex = index;
+                var session = SelectedSession;
+                if (session != null) CloseSession(session);
+                return;
+            }
+        }
+
+        private static Rectangle CloseBounds(Rectangle tabBounds)
+        {
+            return new Rectangle(tabBounds.Right - 19, tabBounds.Top + Math.Max(1, (tabBounds.Height - 16) / 2), 16, 16);
         }
 
         private ConsoleSession SelectedSession

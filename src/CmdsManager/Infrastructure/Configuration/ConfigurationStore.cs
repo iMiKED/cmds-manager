@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 2;
+        private const int CurrentVersion = 3;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -97,7 +97,9 @@ namespace CmdsManager.Infrastructure.Configuration
             var text = File.ReadAllText(ConfigPath, _utf8);
             var ini = IniDocument.Parse(text);
             var configuration = ParseConfiguration(ini);
-            var requiresUpgrade = RequiresUpgrade(ini, configuration.Application.ConfigVersion);
+            var loadedVersion = configuration.Application.ConfigVersion;
+            var requiresUpgrade = RequiresUpgrade(ini, loadedVersion);
+            UpgradeConfiguration(configuration, loadedVersion);
             configuration.Application.ConfigVersion = CurrentVersion;
             ValidateConfiguration(configuration);
             if (requiresUpgrade)
@@ -474,6 +476,28 @@ namespace CmdsManager.Infrastructure.Configuration
             }
 
             return false;
+        }
+
+        private static void UpgradeConfiguration(AppConfiguration configuration, int loadedVersion)
+        {
+            if (loadedVersion >= 3 || configuration.Localization?.Languages == null) return;
+
+            ReplaceUnmodifiedString(configuration.Localization, "ru", "Script.Encoding.Auto",
+                "Авто (OEM Windows)", "Авто (UTF-8/OEM Windows)");
+            ReplaceUnmodifiedString(configuration.Localization, "en", "Script.Encoding.Auto",
+                "Auto (Windows OEM)", "Auto (UTF-8/Windows OEM)");
+        }
+
+        private static void ReplaceUnmodifiedString(LocalizationSettings localization, string language, string key,
+            string previousDefault, string currentDefault)
+        {
+            Dictionary<string, string> values;
+            string value;
+            if (localization.Languages.TryGetValue(language, out values) &&
+                values.TryGetValue(key, out value) && string.Equals(value, previousDefault, StringComparison.Ordinal))
+            {
+                values[key] = currentDefault;
+            }
         }
 
         private static T ReadEnum<T>(IniDocument ini, string section, string key, T defaultValue) where T : struct

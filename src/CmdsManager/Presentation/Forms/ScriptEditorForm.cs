@@ -25,10 +25,10 @@ namespace CmdsManager.Presentation.Forms
         private readonly ComboBox _outputEncoding = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly CheckBox _allowParallel = new CheckBox { AutoSize = true };
         private readonly CheckBox _autoStart = new CheckBox { AutoSize = true };
-        private readonly NumericUpDown _autoStartOrder = new NumericUpDown { Minimum = -100000, Maximum = 100000 };
-        private readonly NumericUpDown _autoStartDelay = new NumericUpDown { Minimum = 0, Maximum = 86400 };
+        private readonly NumericUpDown _autoStartOrder = new NumericUpDown { Minimum = -100000, Maximum = 100000, Width = 58, TextAlign = HorizontalAlignment.Right };
+        private readonly NumericUpDown _autoStartDelay = new NumericUpDown { Minimum = 0, Maximum = 86400, Width = 58, TextAlign = HorizontalAlignment.Right };
         private readonly ComboBox _stopPolicy = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly NumericUpDown _stopTimeout = new NumericUpDown { Minimum = 0, Maximum = 3600 };
+        private readonly NumericUpDown _stopTimeout = new NumericUpDown { Minimum = 0, Maximum = 3600, Width = 58, TextAlign = HorizontalAlignment.Right };
 
         public ScriptEditorForm(ScriptDefinition source, LaunchProfile defaults, string configurationDirectory, LocalizationService text)
         {
@@ -43,8 +43,8 @@ namespace CmdsManager.Presentation.Forms
             MaximizeBox = false;
             ShowInTaskbar = false;
             FormBorderStyle = FormBorderStyle.FixedDialog;
-            ClientSize = new Size(610, 410);
-            Icon = SystemIcons.Application;
+            ClientSize = new Size(540, 405);
+            Icon = ApplicationResources.Icon;
 
             _enabled.Text = _text["Script.Enabled"];
             _captureOutput.Text = _text["Script.Capture"];
@@ -64,35 +64,24 @@ namespace CmdsManager.Presentation.Forms
                 new DisplayItem<ScriptOutputEncoding>(ScriptOutputEncoding.Windows1251, _text["Script.Encoding.Windows1251"]),
                 new DisplayItem<ScriptOutputEncoding>(ScriptOutputEncoding.Utf16LittleEndian, _text["Script.Encoding.Utf16"]));
 
-            var general = CreateTable();
-            AddRow(general, _text["Script.Name"], _name);
-            AddRow(general, _text["Script.File"], WithButton(_path, _text["Common.Browse"], BrowseScript));
-            AddRow(general, string.Empty, _enabled);
-            AddRow(general, _text["Script.Interpreter"], _interpreter);
-            AddRow(general, _text["Script.Arguments"], _arguments);
-            AddRow(general, _text["Script.WorkingDirectory"], WithButton(_workingDirectory, _text["Common.Browse"], BrowseWorkingDirectory));
-            AddRow(general, _text["Script.WindowMode"], _windowMode);
-            AddRow(general, string.Empty, _captureOutput);
-            AddRow(general, _text["Script.Encoding"], _outputEncoding);
-
-            var launch = CreateTable();
-            AddRow(launch, string.Empty, _allowParallel);
-            AddRow(launch, string.Empty, _autoStart);
-            AddRow(launch, _text["Script.AutoStartOrder"], _autoStartOrder);
-            AddRow(launch, _text["Script.AutoStartDelay"], _autoStartDelay);
-            AddRow(launch, _text["Script.StopPolicy"], _stopPolicy);
-            AddRow(launch, _text["Script.StopTimeout"], _stopTimeout);
-            AddRow(launch, string.Empty, new Label
+            var content = CreateTable();
+            AddRow(content, _text["Script.Name"], NameAndEnabled());
+            AddRow(content, _text["Script.File"], WithButton(_path, _text["Common.Browse"], BrowseScript));
+            AddRow(content, _text["Script.Interpreter"], _interpreter);
+            AddRow(content, _text["Script.Arguments"], _arguments);
+            AddRow(content, _text["Script.WorkingDirectory"], WithButton(_workingDirectory, _text["Common.Browse"], BrowseWorkingDirectory));
+            AddFullRow(content, WindowAndStopControls());
+            AddFullRow(content, OutputControls());
+            AddFullRow(content, LaunchCheckBoxes());
+            AddFullRow(content, CompactNumericControls());
+            AddFullRow(content, new Label
             {
                 AutoSize = true,
-                MaximumSize = new Size(400, 0),
+                MaximumSize = new Size(500, 0),
                 ForeColor = SystemColors.GrayText,
                 Text = _text["Script.Note"]
             });
 
-            var tabs = new TabControl { Dock = DockStyle.Fill };
-            tabs.TabPages.Add(Page(_text["Script.Tab.General"], general));
-            tabs.TabPages.Add(Page(_text["Script.Tab.Launch"], launch));
             var buttons = new FlowLayoutPanel
             {
                 FlowDirection = FlowDirection.RightToLeft,
@@ -108,7 +97,7 @@ namespace CmdsManager.Presentation.Forms
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.Controls.Add(tabs, 0, 0);
+            layout.Controls.Add(content, 0, 0);
             layout.Controls.Add(buttons, 0, 1);
             Controls.Add(layout);
             AcceptButton = save;
@@ -239,17 +228,92 @@ namespace CmdsManager.Presentation.Forms
 
         private static TableLayoutPanel CreateTable()
         {
-            var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(8), AutoScroll = true, ColumnCount = 2, RowCount = 0 };
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
+            var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(8), AutoScroll = false, ColumnCount = 2, RowCount = 0 };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             return table;
         }
 
-        private static TabPage Page(string title, Control content)
+        private Control OutputControls()
         {
-            var page = new TabPage(title) { Padding = new Padding(0) };
-            page.Controls.Add(content);
-            return page;
+            _outputEncoding.Width = 190;
+            var panel = HorizontalPanel();
+            _captureOutput.Margin = new Padding(2, 5, 12, 2);
+            var label = InlineLabel(_text["Script.Encoding"]);
+            _outputEncoding.Margin = new Padding(4, 2, 2, 2);
+            panel.Controls.Add(_captureOutput);
+            panel.Controls.Add(label);
+            panel.Controls.Add(_outputEncoding);
+            return panel;
+        }
+
+        private Control NameAndEnabled()
+        {
+            _name.Dock = DockStyle.Fill;
+            _enabled.Margin = new Padding(8, 5, 2, 2);
+            var panel = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, Margin = Padding.Empty };
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panel.Controls.Add(_name, 0, 0);
+            panel.Controls.Add(_enabled, 1, 0);
+            return panel;
+        }
+
+        private Control WindowAndStopControls()
+        {
+            _windowMode.Width = 125;
+            _stopPolicy.Width = 220;
+            var panel = HorizontalPanel();
+            panel.Controls.Add(InlineLabel(_text["Script.WindowMode"]));
+            _windowMode.Margin = new Padding(3, 2, 12, 2);
+            panel.Controls.Add(_windowMode);
+            panel.Controls.Add(InlineLabel(_text["Script.StopPolicy"]));
+            _stopPolicy.Margin = new Padding(3, 2, 2, 2);
+            panel.Controls.Add(_stopPolicy);
+            return panel;
+        }
+
+        private Control LaunchCheckBoxes()
+        {
+            var panel = HorizontalPanel();
+            _allowParallel.Margin = new Padding(2, 5, 14, 2);
+            _autoStart.Margin = new Padding(2, 5, 2, 2);
+            panel.Controls.Add(_allowParallel);
+            panel.Controls.Add(_autoStart);
+            return panel;
+        }
+
+        private Control CompactNumericControls()
+        {
+            var panel = HorizontalPanel();
+            AddCompactControl(panel, _text["Script.AutoStartOrder"], _autoStartOrder);
+            AddCompactControl(panel, _text["Script.AutoStartDelay"], _autoStartDelay);
+            AddCompactControl(panel, _text["Script.StopTimeout"], _stopTimeout);
+            return panel;
+        }
+
+        private static FlowLayoutPanel HorizontalPanel()
+        {
+            return new FlowLayoutPanel
+            {
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty
+            };
+        }
+
+        private static Label InlineLabel(string text)
+        {
+            return new Label { Text = text, AutoSize = true, Margin = new Padding(2, 7, 1, 2) };
+        }
+
+        private static void AddCompactControl(FlowLayoutPanel panel, string label, NumericUpDown control)
+        {
+            panel.Controls.Add(InlineLabel(label));
+            control.Margin = new Padding(3, 2, 10, 2);
+            panel.Controls.Add(control);
         }
 
         private static Control WithButton(TextBox textBox, string buttonText, EventHandler click)
@@ -273,6 +337,16 @@ namespace CmdsManager.Presentation.Forms
             control.Dock = control is CheckBox || control is Label ? DockStyle.Top : DockStyle.Fill;
             control.Margin = new Padding(2, 2, 2, 3);
             table.Controls.Add(control, 1, row);
+        }
+
+        private static void AddFullRow(TableLayoutPanel table, Control control)
+        {
+            var row = table.RowCount++;
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            control.Dock = control is Label ? DockStyle.Top : DockStyle.Fill;
+            control.Margin = new Padding(2, 2, 2, 3);
+            table.Controls.Add(control, 0, row);
+            table.SetColumnSpan(control, 2);
         }
 
         private static void FillCombo<T>(ComboBox combo, params DisplayItem<T>[] values) { combo.Items.AddRange(values.Cast<object>().ToArray()); }

@@ -15,9 +15,10 @@ namespace CmdsManager.Infrastructure.Execution
 
         internal IntPtr ProcessHandle { get; set; }
         internal IntPtr JobHandle { get; set; }
-        internal StreamReader StandardOutput { get; set; }
-        internal StreamReader StandardError { get; set; }
+        internal TextReader StandardOutput { get; set; }
+        internal TextReader StandardError { get; set; }
         internal int ProcessId { get; set; }
+        internal string TemporaryScriptPath { get; set; }
 
         public void Dispose()
         {
@@ -40,6 +41,17 @@ namespace CmdsManager.Infrastructure.Execution
                 NativeMethods.CloseHandle(ProcessHandle);
                 ProcessHandle = IntPtr.Zero;
             }
+
+            DeleteTemporaryScript(TemporaryScriptPath);
+            TemporaryScriptPath = null;
+        }
+
+        internal static void DeleteTemporaryScript(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            try { File.Delete(path); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 
@@ -60,6 +72,7 @@ namespace CmdsManager.Infrastructure.Execution
             IntPtr nullInput = IntPtr.Zero;
             var processInfo = new NativeMethods.ProcessInformation();
             var processCreated = false;
+            var launchCompleted = false;
 
             try
             {
@@ -94,7 +107,6 @@ namespace CmdsManager.Infrastructure.Execution
                 {
                     commandLine.Append(' ').Append(spec.Arguments);
                 }
-
                 if (!NativeMethods.CreateProcessW(
                     spec.ExecutablePath,
                     commandLine,
@@ -131,18 +143,19 @@ namespace CmdsManager.Infrastructure.Execution
                 {
                     ProcessHandle = processInfo.Process,
                     JobHandle = job,
-                    ProcessId = processInfo.ProcessId
+                    ProcessId = processInfo.ProcessId,
+                    TemporaryScriptPath = spec.TemporaryScriptPath
                 };
                 processInfo.Process = IntPtr.Zero;
                 job = IntPtr.Zero;
 
                 if (spec.CaptureOutput)
                 {
-                    var encoding = GetOutputEncoding(spec.OutputEncoding);
-                    process.StandardOutput = CreateReader(ref stdoutRead, encoding);
-                    process.StandardError = CreateReader(ref stderrRead, encoding);
+                    process.StandardOutput = CreateReader(ref stdoutRead, spec.OutputEncoding);
+                    process.StandardError = CreateReader(ref stderrRead, spec.OutputEncoding);
                 }
 
+                launchCompleted = true;
                 return process;
             }
             catch
@@ -164,6 +177,7 @@ namespace CmdsManager.Infrastructure.Execution
                 Close(ref stderrWrite);
                 Close(ref nullInput);
                 Close(ref job);
+                if (!launchCompleted) NativeProcess.DeleteTemporaryScript(spec.TemporaryScriptPath);
             }
         }
 
@@ -243,11 +257,15 @@ namespace CmdsManager.Infrastructure.Execution
             return handle;
         }
 
-        private static StreamReader CreateReader(ref IntPtr handle, Encoding encoding)
+        private static TextReader CreateReader(ref IntPtr handle, ScriptOutputEncoding outputEncoding)
         {
             var safeHandle = new SafeFileHandle(handle, true);
             handle = IntPtr.Zero;
             var stream = new FileStream(safeHandle, FileAccess.Read, 4096, false);
+            if (outputEncoding == ScriptOutputEncoding.Auto)
+                return new AdaptiveEncodingTextReader(stream, GetOemEncoding());
+
+            var encoding = GetOutputEncoding(outputEncoding);
             return new StreamReader(stream, encoding, true, 4096);
         }
 
@@ -263,14 +281,13 @@ namespace CmdsManager.Infrastructure.Execution
                     return Encoding.Unicode;
             }
 
-            try
-            {
-                return Encoding.GetEncoding((int)NativeMethods.GetOEMCP());
-            }
-            catch (ArgumentException)
-            {
-                return Encoding.Default;
-            }
+            return GetOemEncoding();
+        }
+
+        private static Encoding GetOemEncoding()
+        {
+            try { return Encoding.GetEncoding((int)NativeMethods.GetOEMCP()); }
+            catch (ArgumentException) { return Encoding.Default; }
         }
 
         private static short ToShowWindow(ScriptWindowMode mode)
@@ -288,7 +305,8 @@ namespace CmdsManager.Infrastructure.Execution
 
         private static Win32Exception LastWin32(string message)
         {
-            return new Win32Exception(Marshal.GetLastWin32Error(), message);
+            var error = Marshal.GetLastWin32Error();
+            return new Win32Exception(error, message + " Win32 error " + error + ".");
         }
 
         private static void Close(ref IntPtr handle)

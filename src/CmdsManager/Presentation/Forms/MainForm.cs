@@ -23,7 +23,6 @@ namespace CmdsManager.Presentation.Forms
         private readonly IExecutionLog _log;
         private readonly LocalizationService _text;
         private readonly DataGridView _grid = new DataGridView();
-        private readonly Timer _activityTimer = new Timer { Interval = 500 };
         private readonly Font _activityFont = new Font("Segoe UI Symbol", 11f, FontStyle.Bold, GraphicsUnit.Point);
         private readonly ToolStripTextBox _filter = new ToolStripTextBox();
         private readonly ConsoleTabsControl _console;
@@ -45,7 +44,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly ToolStripMenuItem _contextEditFile = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextFolder = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextDelete = new ToolStripMenuItem();
-        private bool _activityPulse;
+        private bool _refreshingGrid;
 
         public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
             IScriptEditorLauncher editor, IApplicationStartupRegistration startup, IExecutionLog log, LocalizationService text)
@@ -63,7 +62,7 @@ namespace CmdsManager.Presentation.Forms
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(880, 520);
             Size = new Size(1120, 680);
-            Icon = SystemIcons.Application;
+            Icon = ApplicationResources.Icon;
 
             var strip = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, RenderMode = ToolStripRenderMode.System };
             _addButton = Button((sender, args) => AddScript());
@@ -103,7 +102,7 @@ namespace CmdsManager.Presentation.Forms
             Controls.Add(strip);
             strip.Dock = DockStyle.Top;
 
-            _grid.SelectionChanged += (sender, args) => UpdateButtons();
+            _grid.SelectionChanged += HandleGridSelectionChanged;
             _grid.CellDoubleClick += (sender, args) => { if (args.RowIndex >= 0) EditSelected(); };
             FormClosing += HandleFormClosing;
             Resize += (sender, args) => { if (WindowState == FormWindowState.Minimized) Hide(); };
@@ -113,9 +112,8 @@ namespace CmdsManager.Presentation.Forms
             _supervisor.InstanceStarted += HandleInstanceStarted;
             _supervisor.InstanceExited += HandleInstanceExited;
             _text.Changed += HandleLocalizationChanged;
-            _activityTimer.Tick += HandleActivityTick;
+            _console.CloseRequested += HandleConsoleCloseRequested;
             ApplyLocalization();
-            _activityTimer.Start();
         }
 
         public event EventHandler ExitRequested;
@@ -170,6 +168,20 @@ namespace CmdsManager.Presentation.Forms
             catch (Exception exception) { ShowError(_text.Get("Main.StartFailed", script.Name), exception); }
         }
 
+        public void RunManagedChild(string parentWorkingDirectory, string[] startArguments)
+        {
+            try
+            {
+                var request = ManagedStartRequestParser.Parse(parentWorkingDirectory, startArguments);
+                var script = request.ToScriptDefinition();
+                _supervisor.Start(script, Configuration.PowerShell7Path);
+            }
+            catch (Exception exception)
+            {
+                ShowError(_text["Main.ChildStartFailed"], exception);
+            }
+        }
+
         public async Task StopAllAsync()
         {
             try { await _supervisor.StopAllAsync(); }
@@ -190,9 +202,7 @@ namespace CmdsManager.Presentation.Forms
                 _supervisor.InstanceStarted -= HandleInstanceStarted;
                 _supervisor.InstanceExited -= HandleInstanceExited;
                 _text.Changed -= HandleLocalizationChanged;
-                _activityTimer.Stop();
-                _activityTimer.Tick -= HandleActivityTick;
-                _activityTimer.Dispose();
+                _console.CloseRequested -= HandleConsoleCloseRequested;
                 _activityFont.Dispose();
             }
             base.Dispose(disposing);
@@ -285,28 +295,33 @@ namespace CmdsManager.Presentation.Forms
         {
             var selectedId = SelectedScript?.Id;
             var filter = _filter.Text?.Trim() ?? string.Empty;
-            _grid.Rows.Clear();
-            foreach (var script in Configuration.Scripts.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
+            _refreshingGrid = true;
+            try
             {
-                var type = Path.GetExtension(script.Path).TrimStart('.').ToUpperInvariant();
-                if (filter.Length > 0 && script.Name.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 &&
-                    script.Path.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 && type.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
-                    continue;
-
-                var runtime = _supervisor.GetSnapshot(script.Id);
-                var rowIndex = _grid.Rows.Add(ActivityGlyph(runtime.State), script.Name, type, InterpreterText(script),
-                    script.Launch.AutoStartWithApplication ? _text["Common.Yes"] : _text["Common.No"], StateText(runtime),
-                    runtime.ProcessId?.ToString() ?? "-", runtime.StartedAt?.ToString("g") ?? "-",
-                    runtime.LastExitCode?.ToString() ?? "-", script.Path);
-                var row = _grid.Rows[rowIndex];
-                row.Tag = script.Id;
-                ApplyRuntimeVisual(row, script, runtime);
-                if (selectedId == script.Id)
+                _grid.Rows.Clear();
+                foreach (var script in Configuration.Scripts.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
                 {
-                    row.Selected = true;
-                    _grid.CurrentCell = row.Cells["Name"];
+                    var type = Path.GetExtension(script.Path).TrimStart('.').ToUpperInvariant();
+                    if (filter.Length > 0 && script.Name.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 &&
+                        script.Path.IndexOf(filter, StringComparison.CurrentCultureIgnoreCase) < 0 && type.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
+                    var runtime = _supervisor.GetSnapshot(script.Id);
+                    var rowIndex = _grid.Rows.Add(ActivityGlyph(runtime.State), script.Name, type, InterpreterText(script),
+                        script.Launch.AutoStartWithApplication ? _text["Common.Yes"] : _text["Common.No"], StateText(runtime),
+                        runtime.ProcessId?.ToString() ?? "-", runtime.StartedAt?.ToString("g") ?? "-",
+                        runtime.LastExitCode?.ToString() ?? "-", script.Path);
+                    var row = _grid.Rows[rowIndex];
+                    row.Tag = script.Id;
+                    ApplyRuntimeVisual(row, script, runtime);
+                    if (selectedId == script.Id)
+                    {
+                        row.Selected = true;
+                        _grid.CurrentCell = row.Cells["Name"];
+                    }
                 }
             }
+            finally { _refreshingGrid = false; }
             UpdateButtons();
         }
 
@@ -446,22 +461,16 @@ namespace CmdsManager.Presentation.Forms
 
         private void HandleStateChanged(object sender, ScriptStateChangedEventArgs args)
         {
+            if (!Configuration.Scripts.Any(item => item.Id == args.Snapshot.ScriptId)) return;
             if (!IsDisposed && IsHandleCreated) BeginInvoke((Action)RefreshGrid);
         }
 
-        private void HandleActivityTick(object sender, EventArgs args)
+        private void HandleGridSelectionChanged(object sender, EventArgs args)
         {
-            if (IsDisposed || !IsHandleCreated) return;
-
-            _activityPulse = !_activityPulse;
-            foreach (DataGridViewRow row in _grid.Rows)
-            {
-                if (!(row.Tag is Guid)) continue;
-                var scriptId = (Guid)row.Tag;
-                var script = Configuration.Scripts.FirstOrDefault(item => item.Id == scriptId);
-                if (script == null) continue;
-                ApplyRuntimeVisual(row, script, _supervisor.GetSnapshot(scriptId));
-            }
+            if (_refreshingGrid) return;
+            UpdateButtons();
+            var selected = SelectedScript;
+            if (selected != null) _console.SelectScript(selected.Id);
         }
 
         private void ApplyRuntimeVisual(DataGridViewRow row, ScriptDefinition script, ScriptRuntimeSnapshot runtime)
@@ -521,15 +530,16 @@ namespace CmdsManager.Presentation.Forms
                 cell.Value = value;
         }
 
-        private string ActivityGlyph(ScriptRuntimeState state)
+        private static string ActivityGlyph(ScriptRuntimeState state)
         {
             switch (state)
             {
                 case ScriptRuntimeState.Starting:
+                    return "◐";
                 case ScriptRuntimeState.Stopping:
-                    return _activityPulse ? "◐" : "◓";
+                    return "◓";
                 case ScriptRuntimeState.Running:
-                    return _activityPulse ? "●" : "◉";
+                    return "●";
                 case ScriptRuntimeState.Failed:
                     return "●";
                 default:
@@ -537,14 +547,14 @@ namespace CmdsManager.Presentation.Forms
             }
         }
 
-        private Color ActivityColor(ScriptRuntimeState state)
+        private static Color ActivityColor(ScriptRuntimeState state)
         {
             switch (state)
             {
                 case ScriptRuntimeState.Starting:
                     return Color.Goldenrod;
                 case ScriptRuntimeState.Running:
-                    return _activityPulse ? Color.FromArgb(24, 160, 88) : Color.FromArgb(17, 116, 67);
+                    return Color.FromArgb(24, 160, 88);
                 case ScriptRuntimeState.Stopping:
                     return Color.DarkOrange;
                 case ScriptRuntimeState.Failed:
@@ -556,6 +566,13 @@ namespace CmdsManager.Presentation.Forms
         private void HandleOutputReceived(object sender, ScriptOutputEventArgs args) { _console.EnqueueOutput(args); }
         private void HandleInstanceStarted(object sender, ScriptInstanceEventArgs args) { _console.EnqueueStarted(args); }
         private void HandleInstanceExited(object sender, ScriptInstanceEventArgs args) { _console.EnqueueExited(args); }
+
+        private async void HandleConsoleCloseRequested(object sender, ConsoleTabCloseRequestedEventArgs args)
+        {
+            if (!args.IsRunning) return;
+            try { await _supervisor.StopInstanceAsync(args.ScriptId, args.ProcessId); }
+            catch (Exception exception) { ShowError(_text["Console.StopFailed"], exception); }
+        }
 
         private void HandleLocalizationChanged(object sender, EventArgs args)
         {

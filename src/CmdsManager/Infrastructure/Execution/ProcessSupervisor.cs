@@ -169,6 +169,27 @@ namespace CmdsManager.Infrastructure.Execution
             return Task.WhenAll(identifiers.Select(StopAsync));
         }
 
+        public Task StopInstanceAsync(Guid scriptId, int processId)
+        {
+            ThrowIfDisposed();
+            RunningProcess session;
+            var onlyInstance = false;
+            lock (_sync)
+            {
+                List<RunningProcess> current;
+                if (!_running.TryGetValue(scriptId, out current)) return Task.FromResult(0);
+                session = current.FirstOrDefault(item => item.Native.ProcessId == processId);
+                if (session == null) return Task.FromResult(0);
+                session.StopRequested = true;
+                onlyInstance = current.Count == 1;
+            }
+
+            if (onlyInstance)
+                PublishCurrent(scriptId, ScriptRuntimeState.Stopping, processId, session.StartedAt, null, string.Empty);
+            return Task.Factory.StartNew(() => StopOne(session), CancellationToken.None,
+                TaskCreationOptions.None, TaskScheduler.Default);
+        }
+
         public ScriptRuntimeSnapshot GetSnapshot(Guid scriptId)
         {
             lock (_sync)
@@ -226,7 +247,7 @@ namespace CmdsManager.Infrastructure.Execution
             }
         }
 
-        private Task StartReader(RunningProcess session, System.IO.StreamReader reader, bool isError)
+        private Task StartReader(RunningProcess session, TextReader reader, bool isError)
         {
             if (reader == null)
             {

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using CmdsManager.Domain;
@@ -15,15 +14,20 @@ namespace CmdsManager.Infrastructure.Execution
         public ScriptWindowMode WindowMode { get; set; }
         public ScriptInterpreter Interpreter { get; set; }
         public ScriptOutputEncoding OutputEncoding { get; set; }
+        public string TemporaryScriptPath { get; set; }
     }
 
     public sealed class ScriptCommandBuilder
     {
         private readonly string _configurationDirectory;
+        private readonly string _managerExecutablePath;
 
-        public ScriptCommandBuilder(string configurationDirectory)
+        public ScriptCommandBuilder(string configurationDirectory, string managerExecutablePath = null)
         {
             _configurationDirectory = Path.GetFullPath(configurationDirectory ?? throw new ArgumentNullException(nameof(configurationDirectory)));
+            _managerExecutablePath = string.IsNullOrWhiteSpace(managerExecutablePath)
+                ? null
+                : Path.GetFullPath(managerExecutablePath);
         }
 
         public ProcessLaunchSpec Build(ScriptDefinition script, string configuredPowerShell7Path)
@@ -62,7 +66,8 @@ namespace CmdsManager.Infrastructure.Execution
             {
                 case ScriptInterpreter.Cmd:
                     spec.ExecutablePath = ResolveCmd();
-                    spec.Arguments = BuildCmdArguments(scriptPath, userArguments);
+                    var executableScriptPath = PrepareCmdScript(scriptPath, spec);
+                    spec.Arguments = BuildCmdArguments(executableScriptPath, userArguments);
                     break;
                 case ScriptInterpreter.WindowsPowerShell:
                     spec.ExecutablePath = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
@@ -89,6 +94,29 @@ namespace CmdsManager.Infrastructure.Execution
             }
 
             return spec;
+        }
+
+        private string PrepareCmdScript(string scriptPath, ProcessLaunchSpec spec)
+        {
+            if (!spec.CaptureOutput || string.IsNullOrEmpty(_managerExecutablePath) || !File.Exists(_managerExecutablePath))
+                return scriptPath;
+
+            try
+            {
+                var transformed = CmdScriptTransformer.TryCreateManagedCopy(scriptPath);
+                if (string.IsNullOrEmpty(transformed)) return scriptPath;
+                spec.TemporaryScriptPath = transformed;
+                Environment.SetEnvironmentVariable("CMDSMANAGER_HOST_EXE", _managerExecutablePath, EnvironmentVariableTarget.Process);
+                return transformed;
+            }
+            catch (IOException)
+            {
+                return scriptPath;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return scriptPath;
+            }
         }
 
         public string ResolvePath(string value)

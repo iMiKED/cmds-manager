@@ -50,7 +50,7 @@ namespace CmdsManager.Presentation.Tray
             });
             _tray = new NotifyIcon
             {
-                Icon = SystemIcons.Application,
+                Icon = ApplicationResources.Icon,
                 Text = "CmdsManager",
                 ContextMenuStrip = menu,
                 Visible = true
@@ -88,6 +88,19 @@ namespace CmdsManager.Presentation.Tray
                     var selector = Encoding.UTF8.GetString(Convert.FromBase64String(command.Substring(4)));
                     if (!_mainForm.IsDisposed && _mainForm.IsHandleCreated)
                         _mainForm.BeginInvoke((Action)(() => _mainForm.RunScript(selector)));
+                    return;
+                }
+                catch (FormatException)
+                {
+                }
+            }
+            if (command != null && command.StartsWith("START ", StringComparison.Ordinal))
+            {
+                try
+                {
+                    var values = Encoding.UTF8.GetString(Convert.FromBase64String(command.Substring(6))).Split('\0');
+                    if (values.Length >= 2 && !_mainForm.IsDisposed && _mainForm.IsHandleCreated)
+                        _mainForm.BeginInvoke((Action)(() => _mainForm.RunManagedChild(values[0], values.Skip(1).ToArray())));
                     return;
                 }
                 catch (FormatException)
