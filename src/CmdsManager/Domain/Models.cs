@@ -84,7 +84,7 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 4;
+        public int ConfigVersion { get; set; } = 5;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
         public bool StartWithWindows { get; set; }
@@ -98,6 +98,16 @@ namespace CmdsManager.Domain
         public bool LogScriptOutput { get; set; }
         public string ConsoleFontName { get; set; } = "Consolas";
         public float ConsoleFontSize { get; set; } = 10f;
+        public int ConsolePaneHeight { get; set; } = 235;
+        public string ConsoleForegroundColor { get; set; } = "#DCDCDC";
+        public string ConsoleBackgroundColor { get; set; } = "#1C1C1C";
+        public int ConsoleBackgroundOpacity { get; set; } = 100;
+        public string ConsoleTabForegroundColor { get; set; } = "#262B32";
+        public string ConsoleActiveTabForegroundColor { get; set; } = "#F5F7FA";
+        public string ConsoleTabBackgroundColor { get; set; } = "#FCFCFD";
+        public int ConsoleTabBackgroundOpacity { get; set; } = 100;
+        public string ConsoleActiveTabBackgroundColor { get; set; } = "#1C1C1C";
+        public int ConsoleActiveTabBackgroundOpacity { get; set; } = 100;
 
         public ApplicationSettings Clone()
         {

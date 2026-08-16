@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 4;
+        private const int CurrentVersion = 5;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -158,6 +158,16 @@ namespace CmdsManager.Infrastructure.Configuration
             app.LogScriptOutput = ReadBool(ini, "Application", "LogScriptOutput", false);
             app.ConsoleFontName = ini.Get("Application", "ConsoleFontName", app.ConsoleFontName);
             app.ConsoleFontSize = ReadFloat(ini, "Application", "ConsoleFontSize", app.ConsoleFontSize, 6f, 48f);
+            app.ConsolePaneHeight = ReadInt(ini, "Application", "ConsolePaneHeight", app.ConsolePaneHeight, 100, 4000);
+            app.ConsoleForegroundColor = ini.Get("Application", "ConsoleForegroundColor", app.ConsoleForegroundColor);
+            app.ConsoleBackgroundColor = ini.Get("Application", "ConsoleBackgroundColor", app.ConsoleBackgroundColor);
+            app.ConsoleBackgroundOpacity = ReadInt(ini, "Application", "ConsoleBackgroundOpacity", app.ConsoleBackgroundOpacity, 0, 100);
+            app.ConsoleTabForegroundColor = ini.Get("Application", "ConsoleTabForegroundColor", app.ConsoleTabForegroundColor);
+            app.ConsoleActiveTabForegroundColor = ini.Get("Application", "ConsoleActiveTabForegroundColor", app.ConsoleActiveTabForegroundColor);
+            app.ConsoleTabBackgroundColor = ini.Get("Application", "ConsoleTabBackgroundColor", app.ConsoleTabBackgroundColor);
+            app.ConsoleTabBackgroundOpacity = ReadInt(ini, "Application", "ConsoleTabBackgroundOpacity", app.ConsoleTabBackgroundOpacity, 0, 100);
+            app.ConsoleActiveTabBackgroundColor = ini.Get("Application", "ConsoleActiveTabBackgroundColor", app.ConsoleActiveTabBackgroundColor);
+            app.ConsoleActiveTabBackgroundOpacity = ReadInt(ini, "Application", "ConsoleActiveTabBackgroundOpacity", app.ConsoleActiveTabBackgroundOpacity, 0, 100);
 
             result.Defaults = ReadLaunchProfile(ini, "Defaults", new LaunchProfile(), false);
             result.PowerShell7Path = ini.Get("PowerShell", "PowerShell7Path", string.Empty);
@@ -234,6 +244,16 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set("Application", "LogScriptOutput", Bool(app.LogScriptOutput));
             ini.Set("Application", "ConsoleFontName", app.ConsoleFontName ?? "Consolas");
             ini.Set("Application", "ConsoleFontSize", app.ConsoleFontSize.ToString("0.##", CultureInfo.InvariantCulture));
+            ini.Set("Application", "ConsolePaneHeight", app.ConsolePaneHeight);
+            ini.Set("Application", "ConsoleForegroundColor", app.ConsoleForegroundColor ?? "#DCDCDC");
+            ini.Set("Application", "ConsoleBackgroundColor", app.ConsoleBackgroundColor ?? "#1C1C1C");
+            ini.Set("Application", "ConsoleBackgroundOpacity", app.ConsoleBackgroundOpacity);
+            ini.Set("Application", "ConsoleTabForegroundColor", app.ConsoleTabForegroundColor ?? "#262B32");
+            ini.Set("Application", "ConsoleActiveTabForegroundColor", app.ConsoleActiveTabForegroundColor ?? "#F5F7FA");
+            ini.Set("Application", "ConsoleTabBackgroundColor", app.ConsoleTabBackgroundColor ?? "#FCFCFD");
+            ini.Set("Application", "ConsoleTabBackgroundOpacity", app.ConsoleTabBackgroundOpacity);
+            ini.Set("Application", "ConsoleActiveTabBackgroundColor", app.ConsoleActiveTabBackgroundColor ?? "#1C1C1C");
+            ini.Set("Application", "ConsoleActiveTabBackgroundOpacity", app.ConsoleActiveTabBackgroundOpacity);
 
             WriteLaunchProfile(ini, "Defaults", configuration.Defaults, false);
             ini.Set("PowerShell", "PowerShell7Path", configuration.PowerShell7Path ?? string.Empty);
@@ -307,6 +327,21 @@ namespace CmdsManager.Infrastructure.Configuration
                 throw new ConfigurationValidationException("Application", "ConsoleFont", "font name and size from 6 to 48 are required");
             }
 
+            if (configuration.Application.ConsolePaneHeight < 100 || configuration.Application.ConsolePaneHeight > 4000)
+            {
+                throw new ConfigurationValidationException("Application", "ConsolePaneHeight", "value from 100 to 4000 is required");
+            }
+
+            ValidateColor(configuration.Application.ConsoleForegroundColor, "ConsoleForegroundColor");
+            ValidateColor(configuration.Application.ConsoleBackgroundColor, "ConsoleBackgroundColor");
+            ValidateColor(configuration.Application.ConsoleTabForegroundColor, "ConsoleTabForegroundColor");
+            ValidateColor(configuration.Application.ConsoleActiveTabForegroundColor, "ConsoleActiveTabForegroundColor");
+            ValidateColor(configuration.Application.ConsoleTabBackgroundColor, "ConsoleTabBackgroundColor");
+            ValidateColor(configuration.Application.ConsoleActiveTabBackgroundColor, "ConsoleActiveTabBackgroundColor");
+            ValidateOpacity(configuration.Application.ConsoleBackgroundOpacity, "ConsoleBackgroundOpacity");
+            ValidateOpacity(configuration.Application.ConsoleTabBackgroundOpacity, "ConsoleTabBackgroundOpacity");
+            ValidateOpacity(configuration.Application.ConsoleActiveTabBackgroundOpacity, "ConsoleActiveTabBackgroundOpacity");
+
             Dictionary<string, string> selectedLanguage;
             if (string.IsNullOrWhiteSpace(configuration.Localization.Language) ||
                 configuration.Localization.Languages == null ||
@@ -332,6 +367,24 @@ namespace CmdsManager.Infrastructure.Configuration
                 {
                     throw new ConfigurationValidationException("Script:" + script.Id.ToString("D"), "", "duplicate identifier");
                 }
+            }
+        }
+
+        private static void ValidateColor(string value, string key)
+        {
+            int parsed;
+            if (string.IsNullOrWhiteSpace(value) || value.Length != 7 || value[0] != '#' ||
+                !int.TryParse(value.Substring(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out parsed))
+            {
+                throw new ConfigurationValidationException("Application", key, "color in #RRGGBB format is required");
+            }
+        }
+
+        private static void ValidateOpacity(int value, string key)
+        {
+            if (value < 0 || value > 100)
+            {
+                throw new ConfigurationValidationException("Application", key, "opacity from 0 to 100 percent is required");
             }
         }
 

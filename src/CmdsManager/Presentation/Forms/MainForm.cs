@@ -26,6 +26,8 @@ namespace CmdsManager.Presentation.Forms
         private readonly Font _activityFont = new Font("Segoe UI Symbol", 11f, FontStyle.Bold, GraphicsUnit.Point);
         private readonly ToolStripTextBox _filter = new ToolStripTextBox();
         private readonly ConsoleTabsControl _console;
+        private readonly SplitContainer _mainSplit;
+        private readonly System.Windows.Forms.Timer _layoutSaveTimer = new System.Windows.Forms.Timer { Interval = 600 };
         private readonly ToolStripButton _addButton;
         private readonly ToolStripButton _editButton;
         private readonly ToolStripButton _deleteButton;
@@ -45,6 +47,9 @@ namespace CmdsManager.Presentation.Forms
         private readonly ToolStripMenuItem _contextFolder = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextDelete = new ToolStripMenuItem();
         private bool _refreshingGrid;
+        private bool _restoringPaneLayout;
+        private bool _consolePaneMaximized;
+        private int _normalConsolePaneHeight;
 
         public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
             IScriptEditorLauncher editor, IApplicationStartupRegistration startup, IExecutionLog log, LocalizationService text)
@@ -63,6 +68,7 @@ namespace CmdsManager.Presentation.Forms
             MinimumSize = new Size(880, 520);
             Size = new Size(1120, 680);
             Icon = ApplicationResources.Icon;
+            KeyPreview = true;
 
             var strip = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, RenderMode = ToolStripRenderMode.System };
             _addButton = Button((sender, args) => AddScript());
@@ -88,24 +94,32 @@ namespace CmdsManager.Presentation.Forms
             });
 
             ConfigureGrid();
-            var split = new SplitContainer
+            _mainSplit = new SplitContainer
             {
                 Dock = DockStyle.Fill,
                 Orientation = Orientation.Horizontal,
                 SplitterDistance = 400,
-                Panel1MinSize = 220,
+                SplitterWidth = 6,
+                FixedPanel = FixedPanel.Panel2,
+                Panel1MinSize = OneScriptPanelHeight,
                 Panel2MinSize = 100
             };
-            split.Panel1.Controls.Add(_grid);
-            split.Panel2.Controls.Add(_console);
-            Controls.Add(split);
+            _mainSplit.Panel1.Controls.Add(_grid);
+            _mainSplit.Panel2.Controls.Add(_console);
+            Controls.Add(_mainSplit);
             Controls.Add(strip);
             strip.Dock = DockStyle.Top;
 
             _grid.SelectionChanged += HandleGridSelectionChanged;
             _grid.CellDoubleClick += (sender, args) => { if (args.RowIndex >= 0) EditSelected(); };
+            _mainSplit.SplitterMoved += HandleSplitterMoved;
+            _mainSplit.DoubleClick += (sender, args) => ToggleConsolePaneMaximized();
+            _mainSplit.SizeChanged += HandleSplitSizeChanged;
+            _layoutSaveTimer.Tick += HandleLayoutSaveTimer;
             FormClosing += HandleFormClosing;
-            Resize += (sender, args) => { if (WindowState == FormWindowState.Minimized) Hide(); };
+            Shown += (sender, args) => ApplyConsolePaneHeight();
+            KeyDown += HandleMainKeyDown;
+            Resize += HandleMainResize;
 
             _supervisor.StateChanged += HandleStateChanged;
             _supervisor.OutputReceived += HandleOutputReceived;
@@ -113,6 +127,7 @@ namespace CmdsManager.Presentation.Forms
             _supervisor.InstanceExited += HandleInstanceExited;
             _text.Changed += HandleLocalizationChanged;
             _console.CloseRequested += HandleConsoleCloseRequested;
+            _console.PaneMaximizeRequested += HandleConsolePaneMaximizeRequested;
             ApplyLocalization();
         }
 
@@ -203,6 +218,9 @@ namespace CmdsManager.Presentation.Forms
                 _supervisor.InstanceExited -= HandleInstanceExited;
                 _text.Changed -= HandleLocalizationChanged;
                 _console.CloseRequested -= HandleConsoleCloseRequested;
+                _console.PaneMaximizeRequested -= HandleConsolePaneMaximizeRequested;
+                _layoutSaveTimer.Stop();
+                _layoutSaveTimer.Dispose();
                 _activityFont.Dispose();
             }
             base.Dispose(disposing);
@@ -322,6 +340,7 @@ namespace CmdsManager.Presentation.Forms
                 }
             }
             finally { _refreshingGrid = false; }
+            UpdateScriptPanelMinimum();
             UpdateButtons();
         }
 
@@ -424,6 +443,7 @@ namespace CmdsManager.Presentation.Forms
                     _store.Save(candidate);
                     _state.Current = candidate;
                     _console.ApplySettings();
+                    ApplyConsolePaneHeight();
                     MessageBox.Show(this, _text["Main.SettingsSaved"], _text["Main.Settings"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception exception)
@@ -448,6 +468,7 @@ namespace CmdsManager.Presentation.Forms
                 _startup.Synchronize(reloaded.Application.StartWithWindows);
                 _state.Current = reloaded;
                 _console.ApplySettings();
+                ApplyConsolePaneHeight();
                 _log.Information("Configuration reloaded from disk.");
             }
             catch (Exception exception) { ShowError(_text["Main.ReloadFailed"], exception); }
@@ -574,6 +595,173 @@ namespace CmdsManager.Presentation.Forms
             catch (Exception exception) { ShowError(_text["Console.StopFailed"], exception); }
         }
 
+        private void HandleConsolePaneMaximizeRequested(object sender, EventArgs args)
+        {
+            ToggleConsolePaneMaximized();
+        }
+
+        private void HandleMainKeyDown(object sender, KeyEventArgs args)
+        {
+            if (args.KeyCode != Keys.F11) return;
+            if (_console.ToggleSelectedTabFullScreen())
+            {
+                args.Handled = true;
+                args.SuppressKeyPress = true;
+            }
+        }
+
+        private void HandleMainResize(object sender, EventArgs args)
+        {
+            if (WindowState == FormWindowState.Minimized)
+            {
+                Hide();
+                return;
+            }
+        }
+
+        private void HandleSplitSizeChanged(object sender, EventArgs args)
+        {
+            if (!_consolePaneMaximized || _restoringPaneLayout || _mainSplit.Height <= 0) return;
+            _restoringPaneLayout = true;
+            try { _mainSplit.SplitterDistance = _mainSplit.Panel1MinSize; }
+            finally { _restoringPaneLayout = false; }
+        }
+
+        private void ToggleConsolePaneMaximized()
+        {
+            if (_mainSplit.Height <= 0) return;
+            var wasRestoring = _restoringPaneLayout;
+            _restoringPaneLayout = true;
+            try
+            {
+                if (_consolePaneMaximized)
+                {
+                    _consolePaneMaximized = false;
+                    UpdateScriptPanelMinimum();
+                    SetConsolePaneHeight(_normalConsolePaneHeight > 0
+                        ? _normalConsolePaneHeight
+                        : Configuration.Application.ConsolePaneHeight);
+                }
+                else
+                {
+                    _normalConsolePaneHeight = Math.Max(_mainSplit.Panel2MinSize, _mainSplit.Panel2.Height);
+                    _mainSplit.Panel1MinSize = OneScriptPanelHeight;
+                    _mainSplit.SplitterDistance = _mainSplit.Panel1MinSize;
+                    _consolePaneMaximized = true;
+                }
+                _console.SetPaneMaximized(_consolePaneMaximized);
+            }
+            finally
+            {
+                _restoringPaneLayout = wasRestoring;
+            }
+            if (!_consolePaneMaximized) SchedulePaneHeightSave();
+        }
+
+        private void ApplyConsolePaneHeight()
+        {
+            if (_mainSplit.Height <= 0) return;
+            var wasRestoring = _restoringPaneLayout;
+            _restoringPaneLayout = true;
+            try
+            {
+                _consolePaneMaximized = false;
+                UpdateScriptPanelMinimum();
+                SetConsolePaneHeight(Configuration.Application.ConsolePaneHeight);
+                _normalConsolePaneHeight = _mainSplit.Panel2.Height;
+                _console.SetPaneMaximized(false);
+            }
+            finally
+            {
+                _restoringPaneLayout = wasRestoring;
+            }
+        }
+
+        private void SetConsolePaneHeight(int requestedHeight)
+        {
+            var maximum = Math.Max(_mainSplit.Panel2MinSize,
+                _mainSplit.Height - _mainSplit.SplitterWidth - _mainSplit.Panel1MinSize);
+            var height = Math.Max(_mainSplit.Panel2MinSize, Math.Min(maximum, requestedHeight));
+            _mainSplit.SplitterDistance = Math.Max(_mainSplit.Panel1MinSize,
+                _mainSplit.Height - _mainSplit.SplitterWidth - height);
+        }
+
+        private void HandleSplitterMoved(object sender, SplitterEventArgs args)
+        {
+            if (_restoringPaneLayout) return;
+            if (_consolePaneMaximized && _mainSplit.SplitterDistance > OneScriptPanelHeight + 1)
+            {
+                if (Control.MouseButtons == MouseButtons.Left)
+                {
+                    _consolePaneMaximized = false;
+                    UpdateScriptPanelMinimum();
+                }
+                else
+                {
+                    _restoringPaneLayout = true;
+                    try { _mainSplit.SplitterDistance = OneScriptPanelHeight; }
+                    finally { _restoringPaneLayout = false; }
+                    return;
+                }
+            }
+            _console.SetPaneMaximized(_consolePaneMaximized);
+            if (_consolePaneMaximized) return;
+            _normalConsolePaneHeight = _mainSplit.Panel2.Height;
+            SchedulePaneHeightSave();
+        }
+
+        private void SchedulePaneHeightSave()
+        {
+            Configuration.Application.ConsolePaneHeight = Math.Max(_mainSplit.Panel2MinSize,
+                _normalConsolePaneHeight);
+            _layoutSaveTimer.Stop();
+            _layoutSaveTimer.Start();
+        }
+
+        private void HandleLayoutSaveTimer(object sender, EventArgs args)
+        {
+            _layoutSaveTimer.Stop();
+            SavePaneHeightSilently();
+        }
+
+        private int OneScriptPanelHeight => Math.Max(48,
+            _grid.ColumnHeadersHeight + _grid.RowTemplate.Height + 4);
+
+        private void UpdateScriptPanelMinimum()
+        {
+            if (_mainSplit == null || _mainSplit.Height <= 0) return;
+            var maximum = Math.Max(OneScriptPanelHeight,
+                _mainSplit.Height - _mainSplit.SplitterWidth - _mainSplit.Panel2MinSize);
+            var rowsHeight = Math.Max(1, _grid.Rows.Count) * _grid.RowTemplate.Height;
+            var normalMinimum = Math.Min(maximum,
+                Math.Max(OneScriptPanelHeight, _grid.ColumnHeadersHeight + rowsHeight + 4));
+            var target = _consolePaneMaximized ? OneScriptPanelHeight : normalMinimum;
+            var wasRestoring = _restoringPaneLayout;
+            _restoringPaneLayout = true;
+            try
+            {
+                _mainSplit.Panel1MinSize = OneScriptPanelHeight;
+                if (_mainSplit.SplitterDistance < target) _mainSplit.SplitterDistance = target;
+                _mainSplit.Panel1MinSize = target;
+            }
+            finally
+            {
+                _restoringPaneLayout = wasRestoring;
+            }
+        }
+
+        private void SavePaneHeightSilently()
+        {
+            try
+            {
+                _store.Save(Configuration);
+            }
+            catch (Exception exception)
+            {
+                _log.Warning("Unable to persist the console pane height: " + exception.Message);
+            }
+        }
+
         private void HandleLocalizationChanged(object sender, EventArgs args)
         {
             if (IsDisposed || !IsHandleCreated) return;
@@ -608,6 +796,15 @@ namespace CmdsManager.Presentation.Forms
                 args.Cancel = true;
                 if (Configuration.Application.CloseToTray) Hide();
                 else ExitRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else if (AllowClose)
+            {
+                _layoutSaveTimer.Stop();
+                if (!_consolePaneMaximized && _normalConsolePaneHeight > 0)
+                {
+                    Configuration.Application.ConsolePaneHeight = _normalConsolePaneHeight;
+                    SavePaneHeightSilently();
+                }
             }
         }
 

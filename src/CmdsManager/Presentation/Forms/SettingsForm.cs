@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
+using CmdsManager.Presentation.Controls;
 
 namespace CmdsManager.Presentation.Forms
 {
@@ -22,6 +23,15 @@ namespace CmdsManager.Presentation.Forms
         private readonly NumericUpDown _retention = new NumericUpDown { Minimum = 1, Maximum = 3650, Width = 72, TextAlign = HorizontalAlignment.Right };
         private readonly ComboBox _language = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly TextBox _fontDisplay = new TextBox { ReadOnly = true };
+        private readonly Button _consoleTextColor = ColorButton();
+        private readonly Button _consoleBackgroundColor = ColorButton();
+        private readonly Button _tabTextColor = ColorButton();
+        private readonly Button _activeTabTextColor = ColorButton();
+        private readonly Button _tabBackgroundColor = ColorButton();
+        private readonly Button _activeTabBackgroundColor = ColorButton();
+        private readonly NumericUpDown _consoleOpacity = OpacityField();
+        private readonly NumericUpDown _tabOpacity = OpacityField();
+        private readonly NumericUpDown _activeTabOpacity = OpacityField();
         private string _fontName;
         private float _fontSize;
 
@@ -69,8 +79,28 @@ namespace CmdsManager.Presentation.Forms
             AddRow(tools, _text["Settings.Retention"], _retention);
             AddFullRow(tools, _logScriptOutput);
 
+            SetColor(_consoleTextColor, ConsoleAppearance.ParseColor(source.ConsoleForegroundColor, Color.Gainsboro));
+            SetColor(_consoleBackgroundColor, ConsoleAppearance.ParseColor(source.ConsoleBackgroundColor, Color.FromArgb(28, 28, 28)));
+            SetColor(_tabTextColor, ConsoleAppearance.ParseColor(source.ConsoleTabForegroundColor, Color.FromArgb(38, 43, 50)));
+            SetColor(_activeTabTextColor, ConsoleAppearance.ParseColor(source.ConsoleActiveTabForegroundColor, Color.FromArgb(245, 247, 250)));
+            SetColor(_tabBackgroundColor, ConsoleAppearance.ParseColor(source.ConsoleTabBackgroundColor, Color.FromArgb(252, 252, 253)));
+            SetColor(_activeTabBackgroundColor, ConsoleAppearance.ParseColor(source.ConsoleActiveTabBackgroundColor, Color.FromArgb(28, 28, 28)));
+            _consoleOpacity.Value = source.ConsoleBackgroundOpacity;
+            _tabOpacity.Value = source.ConsoleTabBackgroundOpacity;
+            _activeTabOpacity.Value = source.ConsoleActiveTabBackgroundOpacity;
+
+            var appearance = CreateTable(174);
+            AddRow(appearance, _text["Settings.ConsoleTextColor"], ColorOnly(_consoleTextColor));
+            AddRow(appearance, _text["Settings.ConsoleBackground"], ColorWithOpacity(_consoleBackgroundColor, _consoleOpacity));
+            AddRow(appearance, _text["Settings.TabTextColor"], ColorOnly(_tabTextColor));
+            AddRow(appearance, _text["Settings.ActiveTabTextColor"], ColorOnly(_activeTabTextColor));
+            AddRow(appearance, _text["Settings.TabBackground"], ColorWithOpacity(_tabBackgroundColor, _tabOpacity));
+            AddRow(appearance, _text["Settings.ActiveTabBackground"], ColorWithOpacity(_activeTabBackgroundColor, _activeTabOpacity));
+            AddFiller(appearance);
+
             var tabs = new TabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(Page(_text["Settings.Tab.General"], general));
+            tabs.TabPages.Add(Page(_text["Settings.Tab.Appearance"], appearance));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Tools"], tools));
             var buttons = new FlowLayoutPanel
             {
@@ -136,6 +166,15 @@ namespace CmdsManager.Presentation.Forms
                 SettingsResult.LogScriptOutput = _logScriptOutput.Checked;
                 SettingsResult.ConsoleFontName = _fontName;
                 SettingsResult.ConsoleFontSize = _fontSize;
+                SettingsResult.ConsoleForegroundColor = ConsoleAppearance.ToHex(_consoleTextColor.BackColor);
+                SettingsResult.ConsoleBackgroundColor = ConsoleAppearance.ToHex(_consoleBackgroundColor.BackColor);
+                SettingsResult.ConsoleBackgroundOpacity = decimal.ToInt32(_consoleOpacity.Value);
+                SettingsResult.ConsoleTabForegroundColor = ConsoleAppearance.ToHex(_tabTextColor.BackColor);
+                SettingsResult.ConsoleActiveTabForegroundColor = ConsoleAppearance.ToHex(_activeTabTextColor.BackColor);
+                SettingsResult.ConsoleTabBackgroundColor = ConsoleAppearance.ToHex(_tabBackgroundColor.BackColor);
+                SettingsResult.ConsoleTabBackgroundOpacity = decimal.ToInt32(_tabOpacity.Value);
+                SettingsResult.ConsoleActiveTabBackgroundColor = ConsoleAppearance.ToHex(_activeTabBackgroundColor.BackColor);
+                SettingsResult.ConsoleActiveTabBackgroundOpacity = decimal.ToInt32(_activeTabOpacity.Value);
                 PowerShell7PathResult = _powerShell7Path.Text.Trim();
                 LanguageResult = GetValue(_language, "ru");
                 DialogResult = DialogResult.OK;
@@ -193,10 +232,10 @@ namespace CmdsManager.Presentation.Forms
             _fontDisplay.Text = _fontName + ", " + _fontSize.ToString("0.##") + " pt";
         }
 
-        private static TableLayoutPanel CreateTable()
+        private static TableLayoutPanel CreateTable(int labelWidth = 135)
         {
             var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(8), AutoScroll = false, ColumnCount = 2, RowCount = 0 };
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, labelWidth));
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             return table;
         }
@@ -207,6 +246,78 @@ namespace CmdsManager.Presentation.Forms
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             return panel;
+        }
+
+        private static Button ColorButton()
+        {
+            var button = new Button
+            {
+                AutoSize = false,
+                Size = new Size(96, 25),
+                FlatStyle = FlatStyle.Flat,
+                TextAlign = ContentAlignment.MiddleCenter,
+                UseVisualStyleBackColor = false,
+                Margin = Padding.Empty
+            };
+            button.FlatAppearance.BorderColor = Color.FromArgb(150, 150, 150);
+            button.Click += (sender, args) =>
+            {
+                var source = (Button)sender;
+                using (var dialog = new ColorDialog { Color = source.BackColor, FullOpen = true })
+                {
+                    if (dialog.ShowDialog(source.FindForm()) == DialogResult.OK) SetColor(source, dialog.Color);
+                }
+            };
+            return button;
+        }
+
+        private static NumericUpDown OpacityField()
+        {
+            return new NumericUpDown
+            {
+                Minimum = 0,
+                Maximum = 100,
+                Width = 58,
+                TextAlign = HorizontalAlignment.Right
+            };
+        }
+
+        private static Control ColorOnly(Button button)
+        {
+            var panel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty
+            };
+            panel.Controls.Add(button);
+            return panel;
+        }
+
+        private static Control ColorWithOpacity(Button button, NumericUpDown opacity)
+        {
+            var panel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty
+            };
+            opacity.Margin = new Padding(8, 1, 0, 0);
+            panel.Controls.Add(button);
+            panel.Controls.Add(opacity);
+            panel.Controls.Add(new Label { Text = "%", AutoSize = true, Margin = new Padding(3, 5, 0, 0) });
+            return panel;
+        }
+
+        private static void SetColor(Button button, Color color)
+        {
+            button.BackColor = Color.FromArgb(color.R, color.G, color.B);
+            button.ForeColor = color.GetBrightness() < 0.48f ? Color.White : Color.Black;
+            button.Text = ConsoleAppearance.ToHex(color);
         }
 
         private static TabPage Page(string title, Control content)
@@ -239,6 +350,15 @@ namespace CmdsManager.Presentation.Forms
             control.Margin = new Padding(2, 3, 2, 3);
             table.Controls.Add(control, 0, row);
             table.SetColumnSpan(control, 2);
+        }
+
+        private static void AddFiller(TableLayoutPanel table)
+        {
+            var row = table.RowCount++;
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            var filler = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+            table.Controls.Add(filler, 0, row);
+            table.SetColumnSpan(filler, 2);
         }
 
         private static void SelectValue<T>(ComboBox combo, T value)

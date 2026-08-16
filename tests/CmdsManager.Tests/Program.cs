@@ -81,6 +81,16 @@ namespace CmdsManager.Tests
                 configuration.Application.LogScriptOutput = false;
                 configuration.Application.ConsoleFontName = "Consolas";
                 configuration.Application.ConsoleFontSize = 11.5f;
+                configuration.Application.ConsolePaneHeight = 210;
+                configuration.Application.ConsoleForegroundColor = "#A1B2C3";
+                configuration.Application.ConsoleBackgroundColor = "#102030";
+                configuration.Application.ConsoleBackgroundOpacity = 82;
+                configuration.Application.ConsoleTabForegroundColor = "#112233";
+                configuration.Application.ConsoleActiveTabForegroundColor = "#F1F2F3";
+                configuration.Application.ConsoleTabBackgroundColor = "#CCDDEE";
+                configuration.Application.ConsoleTabBackgroundOpacity = 65;
+                configuration.Application.ConsoleActiveTabBackgroundColor = "#203040";
+                configuration.Application.ConsoleActiveTabBackgroundOpacity = 73;
                 configuration.Localization.Language = "en";
                 configuration.Scripts.Add(new ScriptDefinition
                 {
@@ -111,6 +121,16 @@ namespace CmdsManager.Tests
                 Equal(0, reloaded.Localization.Languages["ru"].Keys.Except(reloaded.Localization.Languages["en"].Keys, StringComparer.OrdinalIgnoreCase).Count(), "every Russian key has an English value");
                 Equal(0, reloaded.Localization.Languages["en"].Keys.Except(reloaded.Localization.Languages["ru"].Keys, StringComparer.OrdinalIgnoreCase).Count(), "every English key has a Russian value");
                 Equal(11.5f, reloaded.Application.ConsoleFontSize, "console font size");
+                Equal(210, reloaded.Application.ConsolePaneHeight, "console pane height");
+                Equal("#A1B2C3", reloaded.Application.ConsoleForegroundColor, "console foreground color");
+                Equal("#102030", reloaded.Application.ConsoleBackgroundColor, "console background color");
+                Equal(82, reloaded.Application.ConsoleBackgroundOpacity, "console background opacity");
+                Equal("#112233", reloaded.Application.ConsoleTabForegroundColor, "tab text color");
+                Equal("#F1F2F3", reloaded.Application.ConsoleActiveTabForegroundColor, "active tab text color");
+                Equal("#CCDDEE", reloaded.Application.ConsoleTabBackgroundColor, "tab background color");
+                Equal(65, reloaded.Application.ConsoleTabBackgroundOpacity, "tab background opacity");
+                Equal("#203040", reloaded.Application.ConsoleActiveTabBackgroundColor, "active tab background color");
+                Equal(73, reloaded.Application.ConsoleActiveTabBackgroundOpacity, "active tab background opacity");
                 var savedText = File.ReadAllText(configPath, Encoding.UTF8);
                 Assert(savedText.Contains("[Strings.ru]") && savedText.Contains("[Strings.en]"), "localization is stored in INI");
 
@@ -125,7 +145,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(4, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(5, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -135,7 +155,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(4, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal(5, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
                 Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
                 Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
@@ -495,8 +515,19 @@ namespace CmdsManager.Tests
                         "settings dialog has no AutoScroll container");
                     Assert(!AllControls(script).OfType<ScrollableControl>().Any(control => control.AutoScroll),
                         "script editor has no AutoScroll container");
-                    var retention = AllControls(settings).OfType<NumericUpDown>().Single();
+                    var retention = AllControls(settings).OfType<NumericUpDown>()
+                        .Single(control => control.Maximum == 3650);
                     Assert(retention.Width <= 80, "log retention field is sized for its value");
+                    var opacityFields = AllControls(settings).OfType<NumericUpDown>()
+                        .Where(control => control.Maximum == 100).ToArray();
+                    Equal(3, opacityFields.Length, "appearance tab has three compact opacity fields");
+                    Assert(opacityFields.All(control => control.Width <= 60),
+                        "opacity fields are sized for percentage values");
+                    var colorButtons = AllControls(settings).OfType<Button>()
+                        .Where(control => control.Text.StartsWith("#", StringComparison.Ordinal)).ToArray();
+                    Equal(6, colorButtons.Length, "appearance tab exposes all console and tab colors");
+                    Assert(colorButtons.Select(control => AbsoluteLeft(control, settings)).Distinct().Count() == 1,
+                        "appearance color controls share one left edge");
                     var numeric = AllControls(script).OfType<NumericUpDown>().ToArray();
                     Equal(3, numeric.Length, "script editor has three compact numeric settings");
                     Assert(numeric.All(control => control.Width <= 65) && numeric.Select(control => control.Parent).Distinct().Count() == 1,
@@ -584,6 +615,15 @@ namespace CmdsManager.Tests
                 var configuration = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini")).LoadOrCreate();
                 configuration.Application.ConsoleFontName = "Consolas";
                 configuration.Application.ConsoleFontSize = 12f;
+                configuration.Application.ConsoleForegroundColor = "#A1B2C3";
+                configuration.Application.ConsoleBackgroundColor = "#102030";
+                configuration.Application.ConsoleBackgroundOpacity = 80;
+                configuration.Application.ConsoleTabForegroundColor = "#223344";
+                configuration.Application.ConsoleActiveTabForegroundColor = "#F1F2F3";
+                configuration.Application.ConsoleTabBackgroundColor = "#CCDDEE";
+                configuration.Application.ConsoleTabBackgroundOpacity = 25;
+                configuration.Application.ConsoleActiveTabBackgroundColor = "#203040";
+                configuration.Application.ConsoleActiveTabBackgroundOpacity = 72;
                 var state = new ConfigurationState(configuration);
                 var text = new LocalizationService(state);
                 using (var console = new ConsoleTabsControl(text, () => state.Current.Application))
@@ -612,6 +652,8 @@ namespace CmdsManager.Tests
                     Assert(!output.Text.Contains("[4242 OUT]"), "console text has no PID OUT prefix");
                     Assert(output.TextLength <= 200000, "console history is bounded");
                     Assert(Math.Abs(output.Font.SizeInPoints - 12f) < 0.1f, "configured console font size is applied");
+                    Equal(Color.FromArgb(0xA1, 0xB2, 0xC3), output.ForeColor,
+                        "configured console text color is applied");
                     Assert(tabs.IsTabRunning(0), "running console tab has a filled activity marker");
                     Assert(tabs.GetTabText(0).Contains(text["Console.Running"]),
                         "running console tab has localized status text");
@@ -625,6 +667,12 @@ namespace CmdsManager.Tests
                     var closeBounds = tabs.GetCloseBounds(0);
                     Assert(tabBounds.Contains(closeBounds) && tabBounds.Right - closeBounds.Right >= 8,
                         "close glyph remains inside the visible tab body");
+                    Equal(64, tabs.InactiveTabColor.A, "inactive tab opacity is applied to the tab surface");
+                    Equal(184, tabs.ActiveTabColor.A, "active tab opacity is applied to the active tab surface");
+                    Equal(Color.FromArgb(0x22, 0x33, 0x44), tabs.InactiveTextColor,
+                        "inactive tab text color is configurable");
+                    Equal(Color.FromArgb(0xF1, 0xF2, 0xF3), tabs.ActiveTextColor,
+                        "active tab text color is configurable");
                     var tabPathFactory = typeof(TerminalTabStrip).GetMethod("CreateTabPath",
                         System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                     Assert(tabPathFactory != null, "terminal tab shape renderer exists");
@@ -663,6 +711,9 @@ namespace CmdsManager.Tests
                     Assert(menuTexts.Contains(text["Console.SaveSelection"]), "console menu can save selected text");
                     Assert(menuTexts.Contains(text["Console.SaveAll"]), "console menu can save all text");
                     Assert(menuTexts.Contains(text["Console.SelectFont"]), "console menu can choose an active-tab font");
+                    Assert(menuTexts.Contains(text["Console.Detach"]), "console menu can detach the active tab");
+                    Assert(menuTexts.Contains(text["Console.FullScreen"]), "console menu can show the active tab full screen");
+                    Assert(menuTexts.Contains(text["Console.MaximizePane"]), "console menu can maximize the console area");
 
                     var windowsScriptId = Guid.NewGuid();
                     const int windowsProcessId = 4343;
@@ -694,6 +745,39 @@ namespace CmdsManager.Tests
                     Assert(windowsOutput.WordWrap && windowsOutput.ScrollBars == RichTextBoxScrollBars.Vertical,
                         "active console tab can enable word wrap");
 
+                    Assert(console.DetachSelectedTab(), "selected console tab detaches without restarting its process");
+                    Assert(WaitWithUi(() => console.DetachedTabCount == 1 && windowsOutput.FindForm() != null,
+                        TimeSpan.FromSeconds(2)), "detached tab is hosted by a separate form");
+                    var detached = windowsOutput.FindForm();
+                    Assert(detached != null && detached.GetType().Name == "DetachedConsoleForm",
+                        "detached console uses the dedicated window host");
+                    console.EnqueueOutput(new ScriptOutputEventArgs(windowsScriptId, windowsProcessId,
+                        "detached-output", false));
+                    Assert(WaitWithUi(() => windowsOutput.Text.Contains("detached-output"), TimeSpan.FromSeconds(2)),
+                        "the same output view keeps receiving text while detached");
+                    var setFullScreen = detached.GetType().GetMethod("SetFullScreen",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    Assert(setFullScreen != null, "detached console exposes a full-screen transition");
+                    setFullScreen.Invoke(detached, new object[] { true });
+                    Equal(FormBorderStyle.None, detached.FormBorderStyle,
+                        "detached console enters borderless full screen without process restart");
+                    setFullScreen.Invoke(detached, new object[] { false });
+                    detached.Close();
+                    Assert(WaitWithUi(() => console.DetachedTabCount == 0 && windowsOutput.FindForm() == null,
+                        TimeSpan.FromSeconds(2)), "closing the detached window attaches the same view back as a tab");
+
+                    tabs.SelectTab(windowsProcessId);
+                    Assert(console.ToggleSelectedTabFullScreen(), "active embedded tab can open directly full screen");
+                    Assert(WaitWithUi(() => console.DetachedTabCount == 1 && windowsOutput.FindForm() != null,
+                        TimeSpan.FromSeconds(2)), "full-screen tab is moved to a separate host");
+                    detached = windowsOutput.FindForm();
+                    Equal(FormBorderStyle.None, detached.FormBorderStyle, "direct full-screen mode is borderless");
+                    setFullScreen = detached.GetType().GetMethod("SetFullScreen",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    setFullScreen.Invoke(detached, new object[] { false });
+                    Assert(WaitWithUi(() => console.DetachedTabCount == 0 && windowsOutput.FindForm() == null,
+                        TimeSpan.FromSeconds(2)), "leaving direct full-screen mode restores the embedded tab");
+
                     console.EnqueueExited(new ScriptInstanceEventArgs(scriptId, "Fast output", processId, DateTime.Now, true, 0));
                     elapsed.Restart();
                     while (elapsed.Elapsed < TimeSpan.FromSeconds(2) &&
@@ -719,6 +803,7 @@ namespace CmdsManager.Tests
                 var store = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini"));
                 var configuration = store.LoadOrCreate();
                 configuration.Localization.Language = "en";
+                configuration.Application.ConsolePaneHeight = 180;
                 var script = new ScriptDefinition
                 {
                     Id = Guid.NewGuid(),
@@ -734,6 +819,16 @@ namespace CmdsManager.Tests
                     }
                 };
                 configuration.Scripts.Add(script);
+                configuration.Scripts.Add(new ScriptDefinition
+                {
+                    Id = Guid.NewGuid(), Name = "Second row", Path = scriptPath,
+                    Launch = script.Launch.Clone()
+                });
+                configuration.Scripts.Add(new ScriptDefinition
+                {
+                    Id = Guid.NewGuid(), Name = "Third row", Path = scriptPath,
+                    Launch = script.Launch.Clone()
+                });
                 var state = new ConfigurationState(configuration);
                 var text = new LocalizationService(state);
                 var commandBuilder = new ScriptCommandBuilder(directory);
@@ -747,6 +842,45 @@ namespace CmdsManager.Tests
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
+                    form.Show();
+                    System.Windows.Forms.Application.DoEvents();
+                    var split = FindControl<SplitContainer>(form);
+                    Assert(split != null && split.FixedPanel == FixedPanel.Panel2,
+                        "console pane keeps its configured height when the main window is resized");
+                    Assert(Math.Abs(split.Panel2.Height - 180) <= 2,
+                        "configured console pane height is restored from INI");
+                    Assert(split.Panel1MinSize >= grid.ColumnHeadersHeight + grid.RowTemplate.Height * 3,
+                        "normal splitter expansion stops at the last script row");
+                    var maximizePane = typeof(MainForm).GetMethod("ToggleConsolePaneMaximized",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    maximizePane.Invoke(form, null);
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(split.Panel1MinSize <= grid.ColumnHeadersHeight + grid.RowTemplate.Height + 5 &&
+                        split.Panel1.Height <= split.Panel1MinSize + 1 && grid.DisplayedRowCount(false) <= 1 &&
+                        grid.Controls.OfType<VScrollBar>().Any(control => control.Visible),
+                        "maximized console area leaves one visible script row and the grid scrolls");
+                    form.Height += 80;
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(split.Panel1.Height <= split.Panel1MinSize + 1,
+                        "maximized console area keeps one row while the main window is resized");
+                    maximizePane.Invoke(form, null);
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(Math.Abs(split.Panel2.Height - 180) <= 2,
+                        "restoring the console area returns to its remembered height");
+                    split.SplitterDistance = split.Height - split.SplitterWidth - 205;
+                    var splitterMoved = typeof(MainForm).GetMethod("HandleSplitterMoved",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    splitterMoved.Invoke(form, new object[]
+                    {
+                        split, new SplitterEventArgs(0, split.SplitterDistance, 0, split.SplitterDistance)
+                    });
+                    Assert(WaitWithUi(() => configuration.Application.ConsolePaneHeight == 205,
+                        TimeSpan.FromSeconds(1)), "dragged console pane height updates the live INI model");
+                    Assert(WaitWithUi(() =>
+                    {
+                        try { return store.Reload().Application.ConsolePaneHeight == 205; }
+                        catch (ConfigurationChangedException) { return false; }
+                    }, TimeSpan.FromSeconds(2)), "dragged console pane height is persisted to INI");
 
                     supervisor.Start(script, string.Empty);
                     var elapsed = Stopwatch.StartNew();

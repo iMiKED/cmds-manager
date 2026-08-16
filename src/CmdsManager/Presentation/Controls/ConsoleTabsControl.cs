@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Execution;
+using CmdsManager.Presentation.Forms;
 
 namespace CmdsManager.Presentation.Controls
 {
@@ -19,7 +20,7 @@ namespace CmdsManager.Presentation.Controls
         private const int MaxCharactersPerTab = 200000;
         private const int TrimToCharacters = 150000;
         private const int MaxEventsPerTick = 50000;
-        private static readonly Color ConsoleBackground = Color.FromArgb(28, 28, 28);
+        private static readonly Color DefaultConsoleBackground = Color.FromArgb(28, 28, 28);
 
         private enum ConsoleEventKind
         {
@@ -55,6 +56,8 @@ namespace CmdsManager.Presentation.Controls
             internal bool WordWrap { get; set; }
             internal Font CustomFont { get; set; }
             internal RichTextBox Output { get; set; }
+            internal DetachedConsoleForm DetachedWindow { get; set; }
+            internal bool ReturnToMainAfterFullScreen { get; set; }
         }
 
         private readonly LocalizationService _text;
@@ -66,14 +69,14 @@ namespace CmdsManager.Presentation.Controls
         {
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
-            ActiveTabColor = ConsoleBackground
+            ActiveTabColor = DefaultConsoleBackground
         };
         private readonly Panel _contentHost = new Panel
         {
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
-            BackColor = ConsoleBackground
+            BackColor = DefaultConsoleBackground
         };
         private readonly TableLayoutPanel _tabLayout = new TableLayoutPanel
         {
@@ -82,14 +85,14 @@ namespace CmdsManager.Presentation.Controls
             RowCount = 2,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
-            BackColor = ConsoleBackground,
+            BackColor = DefaultConsoleBackground,
             CellBorderStyle = TableLayoutPanelCellBorderStyle.None
         };
         private readonly Label _empty = new Label
         {
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = ConsoleBackground,
+            BackColor = DefaultConsoleBackground,
             ForeColor = Color.Silver
         };
         private readonly Timer _flushTimer = new Timer { Interval = 50 };
@@ -100,18 +103,24 @@ namespace CmdsManager.Presentation.Controls
         private readonly ToolStripMenuItem _fontItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _encodingItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _wordWrapItem = new ToolStripMenuItem { CheckOnClick = false };
+        private readonly ToolStripMenuItem _detachItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _fullScreenItem = new ToolStripMenuItem { ShortcutKeyDisplayString = "F11" };
+        private readonly ToolStripMenuItem _maximizePaneItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _clearItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _closeItem = new ToolStripMenuItem();
         private readonly Dictionary<ScriptOutputEncoding, ToolStripMenuItem> _encodingItems =
             new Dictionary<ScriptOutputEncoding, ToolStripMenuItem>();
         private Font _consoleFont;
+        private ConsoleSession _contextSession;
+        private Color _consoleForeground = Color.Gainsboro;
+        private Color _consoleBackground = DefaultConsoleBackground;
 
         public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings)
         {
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
-            BackColor = ConsoleBackground;
+            BackColor = DefaultConsoleBackground;
             AddEncodingItem(ScriptOutputEncoding.Auto);
             AddEncodingItem(ScriptOutputEncoding.Utf8);
             AddEncodingItem(ScriptOutputEncoding.Windows1251);
@@ -127,6 +136,10 @@ namespace CmdsManager.Presentation.Controls
                 _encodingItem,
                 _wordWrapItem,
                 new ToolStripSeparator(),
+                _detachItem,
+                _fullScreenItem,
+                _maximizePaneItem,
+                new ToolStripSeparator(),
                 _clearItem,
                 _closeItem
             });
@@ -136,6 +149,9 @@ namespace CmdsManager.Presentation.Controls
             _saveAllItem.Click += (sender, args) => SaveConsoleText(false);
             _fontItem.Click += (sender, args) => ChooseFont();
             _wordWrapItem.Click += (sender, args) => ToggleWordWrap();
+            _detachItem.Click += (sender, args) => ToggleDetached();
+            _fullScreenItem.Click += (sender, args) => ToggleFullScreen();
+            _maximizePaneItem.Click += (sender, args) => PaneMaximizeRequested?.Invoke(this, EventArgs.Empty);
             _clearItem.Click += (sender, args) => ClearSelectedTab();
             _closeItem.Click += (sender, args) => CloseSelectedTab();
 
@@ -161,6 +177,16 @@ namespace CmdsManager.Presentation.Controls
         }
 
         public event EventHandler<ConsoleTabCloseRequestedEventArgs> CloseRequested;
+        public event EventHandler PaneMaximizeRequested;
+
+        public bool PaneMaximized { get; private set; }
+        public int DetachedTabCount => _sessions.Values.Count(item => item.DetachedWindow != null);
+
+        public void SetPaneMaximized(bool maximized)
+        {
+            PaneMaximized = maximized;
+            _maximizePaneItem.Text = _text[maximized ? "Console.RestorePane" : "Console.MaximizePane"];
+        }
 
         public void EnqueueStarted(ScriptInstanceEventArgs args)
         {
@@ -202,6 +228,41 @@ namespace CmdsManager.Presentation.Controls
             foreach (var session in _sessions.Values.Where(item => item.CustomFont == null))
                 session.Output.Font = replacement;
 
+            var foreground = ConsoleAppearance.ParseColor(settings.ConsoleForegroundColor, Color.Gainsboro);
+            var configuredBackground = ConsoleAppearance.ParseColor(settings.ConsoleBackgroundColor, DefaultConsoleBackground);
+            var background = ConsoleAppearance.Composite(configuredBackground, SystemColors.Control,
+                settings.ConsoleBackgroundOpacity);
+            _consoleForeground = foreground;
+            _consoleBackground = background;
+            BackColor = background;
+            _contentHost.BackColor = background;
+            _tabLayout.BackColor = background;
+            _empty.BackColor = background;
+            _empty.ForeColor = foreground;
+            _tabStrip.InactiveTextColor = ConsoleAppearance.ParseColor(settings.ConsoleTabForegroundColor,
+                Color.FromArgb(38, 43, 50));
+            _tabStrip.ActiveTextColor = ConsoleAppearance.ParseColor(settings.ConsoleActiveTabForegroundColor,
+                Color.FromArgb(245, 247, 250));
+            var inactiveTab = ConsoleAppearance.ParseColor(settings.ConsoleTabBackgroundColor,
+                Color.FromArgb(252, 252, 253));
+            var activeTab = ConsoleAppearance.ParseColor(settings.ConsoleActiveTabBackgroundColor,
+                DefaultConsoleBackground);
+            _tabStrip.InactiveTabColor = ConsoleAppearance.WithOpacity(inactiveTab,
+                settings.ConsoleTabBackgroundOpacity);
+            _tabStrip.ActiveTabColor = ConsoleAppearance.WithOpacity(activeTab,
+                settings.ConsoleActiveTabBackgroundOpacity);
+            _tabStrip.HoverTabColor = ConsoleAppearance.WithOpacity(
+                ConsoleAppearance.Composite(activeTab, inactiveTab, 45),
+                Math.Max(settings.ConsoleTabBackgroundOpacity, settings.ConsoleActiveTabBackgroundOpacity));
+            _tabStrip.Invalidate();
+
+            foreach (var session in _sessions.Values)
+            {
+                session.Output.ForeColor = foreground;
+                session.Output.BackColor = background;
+                if (session.DetachedWindow != null) session.DetachedWindow.BackColor = background;
+            }
+
             var previous = _consoleFont;
             _consoleFont = replacement;
             previous?.Dispose();
@@ -220,7 +281,30 @@ namespace CmdsManager.Presentation.Controls
                 .OrderBy(item => item.ExitCode.HasValue)
                 .ThenByDescending(item => item.StartedAt)
                 .FirstOrDefault();
-            if (session != null) _tabStrip.SelectTab(session.ProcessId);
+            if (session == null) return;
+            if (session.DetachedWindow != null)
+            {
+                session.DetachedWindow.Show();
+                session.DetachedWindow.Activate();
+            }
+            else _tabStrip.SelectTab(session.ProcessId);
+        }
+
+        public bool DetachSelectedTab()
+        {
+            var session = SelectedSession;
+            if (session == null) return false;
+            DetachSession(session, false);
+            return true;
+        }
+
+        public bool ToggleSelectedTabFullScreen()
+        {
+            var session = SelectedSession;
+            if (session == null) return false;
+            session.ReturnToMainAfterFullScreen = true;
+            DetachSession(session, true);
+            return true;
         }
 
         protected override void Dispose(bool disposing)
@@ -230,7 +314,16 @@ namespace CmdsManager.Presentation.Controls
                 _text.Changed -= HandleLocalizationChanged;
                 _flushTimer.Stop();
                 _flushTimer.Dispose();
-                foreach (var session in _sessions.Values) session.CustomFont?.Dispose();
+                foreach (var session in _sessions.Values)
+                {
+                    if (session.DetachedWindow != null)
+                    {
+                        session.DetachedWindow.ReleaseContent();
+                        session.DetachedWindow.ClosePermanently();
+                        session.Output.Dispose();
+                    }
+                    session.CustomFont?.Dispose();
+                }
                 _menu.Dispose();
                 _consoleFont?.Dispose();
             }
@@ -329,8 +422,8 @@ namespace CmdsManager.Presentation.Controls
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
                 WordWrap = false,
-                BackColor = ConsoleBackground,
-                ForeColor = Color.Gainsboro,
+                BackColor = _consoleBackground,
+                ForeColor = _consoleForeground,
                 BorderStyle = BorderStyle.None,
                 DetectUrls = true,
                 HideSelection = false,
@@ -415,7 +508,8 @@ namespace CmdsManager.Presentation.Controls
 
         private void PrepareContextMenu(object sender, CancelEventArgs args)
         {
-            var session = SelectedSession;
+            _contextSession = SessionFromControl(_menu.SourceControl) ?? SelectedSession;
+            var session = _contextSession;
             if (session == null)
             {
                 args.Cancel = true;
@@ -428,12 +522,16 @@ namespace CmdsManager.Presentation.Controls
             _clearItem.Enabled = session.Output.TextLength > 0;
             _wordWrapItem.Checked = session.WordWrap;
             foreach (var pair in _encodingItems) pair.Value.Checked = pair.Key == session.OutputEncoding;
+            _detachItem.Text = _text[session.DetachedWindow == null ? "Console.Detach" : "Console.Reattach"];
+            _fullScreenItem.Checked = session.DetachedWindow != null && session.DetachedWindow.IsFullScreen;
+            _maximizePaneItem.Visible = session.DetachedWindow == null;
+            _maximizePaneItem.Text = _text[PaneMaximized ? "Console.RestorePane" : "Console.MaximizePane"];
             _closeItem.Text = session.ExitCode.HasValue ? _text["Console.CloseTab"] : _text["Console.CloseAndStop"];
         }
 
         private void CopySelection()
         {
-            var session = SelectedSession;
+            var session = MenuSession;
             if (session == null || session.Output.SelectionLength == 0) return;
             try { session.Output.Copy(); }
             catch (ExternalException exception)
@@ -445,7 +543,7 @@ namespace CmdsManager.Presentation.Controls
 
         private void SaveConsoleText(bool selectionOnly)
         {
-            var session = SelectedSession;
+            var session = MenuSession;
             if (session == null) return;
             var content = selectionOnly ? session.Output.SelectedText : session.Output.Text;
             if (string.IsNullOrEmpty(content)) return;
@@ -481,7 +579,7 @@ namespace CmdsManager.Presentation.Controls
 
         private void ChooseFont()
         {
-            var session = SelectedSession;
+            var session = MenuSession;
             if (session == null) return;
             using (var dialog = new FontDialog
             {
@@ -503,7 +601,7 @@ namespace CmdsManager.Presentation.Controls
 
         private void ChooseEncoding(object sender, EventArgs args)
         {
-            var session = SelectedSession;
+            var session = MenuSession;
             var item = sender as ToolStripMenuItem;
             if (session == null || item == null || !(item.Tag is ScriptOutputEncoding)) return;
             session.OutputEncoding = (ScriptOutputEncoding)item.Tag;
@@ -512,7 +610,7 @@ namespace CmdsManager.Presentation.Controls
 
         private void ToggleWordWrap()
         {
-            var session = SelectedSession;
+            var session = MenuSession;
             if (session == null) return;
             session.WordWrap = !session.WordWrap;
             session.Output.WordWrap = session.WordWrap;
@@ -521,7 +619,7 @@ namespace CmdsManager.Presentation.Controls
 
         private void ClearSelectedTab()
         {
-            var session = SelectedSession;
+            var session = MenuSession;
             if (session == null) return;
             session.History.Clear();
             session.HistoryUnits = 0;
@@ -530,8 +628,80 @@ namespace CmdsManager.Presentation.Controls
 
         private void CloseSelectedTab()
         {
-            var session = SelectedSession;
+            var session = MenuSession;
             if (session != null) CloseSession(session);
+        }
+
+        private void ToggleDetached()
+        {
+            var session = MenuSession;
+            if (session == null) return;
+            if (session.DetachedWindow == null) DetachSession(session, false);
+            else AttachSession(session);
+        }
+
+        private void ToggleFullScreen()
+        {
+            var session = MenuSession;
+            if (session == null) return;
+            if (session.DetachedWindow == null)
+            {
+                session.ReturnToMainAfterFullScreen = true;
+                DetachSession(session, true);
+                return;
+            }
+            session.DetachedWindow.ToggleFullScreen();
+        }
+
+        private void DetachSession(ConsoleSession session, bool fullScreen)
+        {
+            if (session.DetachedWindow != null)
+            {
+                session.DetachedWindow.Show();
+                session.DetachedWindow.Activate();
+                if (fullScreen) session.DetachedWindow.SetFullScreen(true);
+                return;
+            }
+
+            _contentHost.Controls.Remove(session.Output);
+            _tabStrip.RemoveTab(session.ProcessId);
+            session.Output.Visible = true;
+            var window = new DetachedConsoleForm(DetachedWindowTitle(session), session.Output)
+            {
+                BackColor = _consoleBackground
+            };
+            session.DetachedWindow = window;
+            window.ReattachRequested += (sender, args) => AttachSession(session);
+            window.FullScreenChanged += (sender, args) => HandleDetachedFullScreenChanged(session);
+            window.Show();
+            if (fullScreen) window.SetFullScreen(true);
+            window.Activate();
+            UpdateEmptyState();
+        }
+
+        private void AttachSession(ConsoleSession session)
+        {
+            var window = session.DetachedWindow;
+            if (window == null) return;
+            session.ReturnToMainAfterFullScreen = false;
+            window.ReleaseContent();
+            session.DetachedWindow = null;
+            window.ClosePermanently();
+            window.Dispose();
+            _contentHost.Controls.Add(session.Output);
+            _tabStrip.AddTab(session.ProcessId, string.Empty, string.Empty, !session.ExitCode.HasValue);
+            UpdateTabTitle(session);
+            _tabStrip.SelectTab(session.ProcessId);
+            UpdateEmptyState();
+        }
+
+        private void HandleDetachedFullScreenChanged(ConsoleSession session)
+        {
+            if (session.DetachedWindow != null && !session.DetachedWindow.IsFullScreen &&
+                session.ReturnToMainAfterFullScreen)
+            {
+                AttachSession(session);
+            }
         }
 
         private void CloseSession(ConsoleSession session)
@@ -539,9 +709,19 @@ namespace CmdsManager.Presentation.Controls
             var isRunning = !session.ExitCode.HasValue;
             _suppressedProcesses.Add(session.ProcessId);
             _sessions.Remove(session.ProcessId);
-            _contentHost.Controls.Remove(session.Output);
+            if (session.DetachedWindow != null)
+            {
+                session.DetachedWindow.ReleaseContent();
+                session.DetachedWindow.ClosePermanently();
+                session.DetachedWindow.Dispose();
+                session.DetachedWindow = null;
+            }
+            else
+            {
+                _contentHost.Controls.Remove(session.Output);
+                _tabStrip.RemoveTab(session.ProcessId);
+            }
             session.Output.Dispose();
-            _tabStrip.RemoveTab(session.ProcessId);
             session.CustomFont?.Dispose();
             UpdateEmptyState();
             CloseRequested?.Invoke(this,
@@ -552,6 +732,7 @@ namespace CmdsManager.Presentation.Controls
         {
             foreach (var session in _sessions.Values)
             {
+                if (session.DetachedWindow != null) continue;
                 var selected = session.ProcessId == args.Key;
                 session.Output.Visible = selected;
                 if (selected) session.Output.BringToFront();
@@ -573,6 +754,18 @@ namespace CmdsManager.Presentation.Controls
             }
         }
 
+        private ConsoleSession MenuSession => _contextSession ?? SelectedSession;
+
+        private ConsoleSession SessionFromControl(Control control)
+        {
+            if (control != null && control.Tag is int)
+            {
+                ConsoleSession session;
+                if (_sessions.TryGetValue((int)control.Tag, out session)) return session;
+            }
+            return null;
+        }
+
         private void HandleLocalizationChanged(object sender, EventArgs args)
         {
             if (IsDisposed) return;
@@ -589,6 +782,9 @@ namespace CmdsManager.Presentation.Controls
             _fontItem.Text = _text["Console.SelectFont"];
             _encodingItem.Text = _text["Console.Encoding"];
             _wordWrapItem.Text = _text["Console.WordWrap"];
+            _detachItem.Text = _text["Console.Detach"];
+            _fullScreenItem.Text = _text["Console.FullScreen"];
+            _maximizePaneItem.Text = _text[PaneMaximized ? "Console.RestorePane" : "Console.MaximizePane"];
             _clearItem.Text = _text["Console.Clear"];
             _closeItem.Text = _text["Console.CloseTab"];
             _encodingItems[ScriptOutputEncoding.Auto].Text = _text["Script.Encoding.Auto"];
@@ -606,10 +802,22 @@ namespace CmdsManager.Presentation.Controls
             var status = session.ExitCode.HasValue
                 ? _text.Get("Console.Exited", session.ExitCode.Value)
                 : _text["Console.Running"];
-            _tabStrip.UpdateTab(session.ProcessId,
-                name + " [" + session.ProcessId + "] · " + status,
-                (session.ScriptName ?? string.Empty) + " [" + session.ProcessId + "] · " + status,
-                !session.ExitCode.HasValue);
+            if (session.DetachedWindow != null)
+            {
+                session.DetachedWindow.Text = DetachedWindowTitle(session);
+            }
+            else
+            {
+                _tabStrip.UpdateTab(session.ProcessId,
+                    name + " [" + session.ProcessId + "] · " + status,
+                    (session.ScriptName ?? string.Empty) + " [" + session.ProcessId + "] · " + status,
+                    !session.ExitCode.HasValue);
+            }
+        }
+
+        private string DetachedWindowTitle(ConsoleSession session)
+        {
+            return _text.Get("Console.DetachedTitle", session.ScriptName ?? string.Empty, session.ProcessId);
         }
 
         private void UpdateEmptyState()
