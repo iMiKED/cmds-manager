@@ -15,21 +15,21 @@ namespace CmdsManager.Presentation.Forms
         private readonly Guid _id;
         private readonly ScriptCommandBuilder _paths;
         private readonly LocalizationService _text;
-        private readonly TextBox _name = new TextBox();
-        private readonly TextBox _path = new TextBox();
-        private readonly CheckBox _enabled = new CheckBox { AutoSize = true };
-        private readonly ComboBox _interpreter = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly TextBox _arguments = new TextBox();
-        private readonly TextBox _workingDirectory = new TextBox();
-        private readonly ComboBox _windowMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly CheckBox _captureOutput = new CheckBox { AutoSize = true };
-        private readonly ComboBox _outputEncoding = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly CheckBox _allowParallel = new CheckBox { AutoSize = true };
-        private readonly CheckBox _autoStart = new CheckBox { AutoSize = true };
-        private readonly NumericUpDown _autoStartOrder = new NumericUpDown { Minimum = -100000, Maximum = 100000, Width = 58, TextAlign = HorizontalAlignment.Right };
-        private readonly NumericUpDown _autoStartDelay = new NumericUpDown { Minimum = 0, Maximum = 86400, Width = 58, TextAlign = HorizontalAlignment.Right };
-        private readonly ComboBox _stopPolicy = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly NumericUpDown _stopTimeout = new NumericUpDown { Minimum = 0, Maximum = 3600, Width = 58, TextAlign = HorizontalAlignment.Right };
+        private readonly FluentTextBox _name = new FluentTextBox();
+        private readonly FluentTextBox _path = new FluentTextBox();
+        private readonly FluentCheckBox _enabled = new FluentCheckBox();
+        private readonly FluentComboBox _interpreter = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly FluentTextBox _arguments = new FluentTextBox();
+        private readonly FluentTextBox _workingDirectory = new FluentTextBox();
+        private readonly FluentComboBox _windowMode = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly FluentCheckBox _captureOutput = new FluentCheckBox();
+        private readonly FluentComboBox _outputEncoding = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly FluentCheckBox _allowParallel = new FluentCheckBox();
+        private readonly FluentCheckBox _autoStart = new FluentCheckBox();
+        private readonly FluentNumericUpDown _autoStartOrder = new FluentNumericUpDown { Minimum = -100000, Maximum = 100000, Width = 58, TextAlign = HorizontalAlignment.Right };
+        private readonly FluentNumericUpDown _autoStartDelay = new FluentNumericUpDown { Minimum = 0, Maximum = 86400, Width = 58, TextAlign = HorizontalAlignment.Right };
+        private readonly FluentComboBox _stopPolicy = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        private readonly FluentNumericUpDown _stopTimeout = new FluentNumericUpDown { Minimum = 0, Maximum = 3600, Width = 58, TextAlign = HorizontalAlignment.Right };
 
         public ScriptEditorForm(ScriptDefinition source, LaunchProfile defaults, string configurationDirectory,
             LocalizationService text, ApplicationTheme theme = ApplicationTheme.System)
@@ -45,7 +45,7 @@ namespace CmdsManager.Presentation.Forms
             MaximizeBox = false;
             ShowInTaskbar = false;
             FormBorderStyle = FormBorderStyle.FixedDialog;
-            ClientSize = new Size(560, 465);
+            ClientSize = new Size(570, 465);
             Icon = ApplicationResources.Icon;
 
             _enabled.Text = _text["Script.Enabled"];
@@ -94,8 +94,8 @@ namespace CmdsManager.Presentation.Forms
                 AutoSize = true,
                 Padding = new Padding(0, 4, 6, 5)
             };
-            var save = new Button { Text = _text["Common.Save"], AutoSize = true };
-            var cancel = new Button { Text = _text["Common.Cancel"], AutoSize = true, DialogResult = DialogResult.Cancel };
+            var save = new FluentButton { Text = _text["Common.Save"], AutoSize = true, Primary = true };
+            var cancel = new FluentButton { Text = _text["Common.Cancel"], AutoSize = true, DialogResult = DialogResult.Cancel };
             save.Click += SaveAndClose;
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
@@ -243,8 +243,8 @@ namespace CmdsManager.Presentation.Forms
         private Control NameAndEnabled()
         {
             _name.Dock = DockStyle.Fill;
-            _name.Margin = new Padding(0, 2, 0, 3);
-            _enabled.Margin = new Padding(8, 5, 2, 2);
+            _name.Margin = Padding.Empty;
+            _enabled.Margin = new Padding(8, 4, 2, 2);
             var panel = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, Margin = Padding.Empty };
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -276,24 +276,24 @@ namespace CmdsManager.Presentation.Forms
 
         private static Label InlineLabel(string text)
         {
-            return new Label { Text = text, AutoSize = true, Margin = new Padding(2, 7, 1, 2) };
+            return new Label { Text = text, AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
         }
 
-        private static void AddCompactControl(FlowLayoutPanel panel, string label, NumericUpDown control)
+        private static void AddCompactControl(FlowLayoutPanel panel, string label, FluentNumericUpDown control)
         {
             panel.Controls.Add(InlineLabel(label));
-            control.Margin = new Padding(3, 2, 7, 2);
+            control.Margin = new Padding(2, 0, 2, 0);
             panel.Controls.Add(control);
         }
 
-        private static Control WithButton(TextBox textBox, string buttonText, EventHandler click)
+        private static Control WithButton(FluentTextBox textBox, string buttonText, EventHandler click)
         {
             textBox.Dock = DockStyle.Fill;
-            textBox.Margin = new Padding(0, 2, 0, 3);
+            textBox.Margin = Padding.Empty;
             var panel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Margin = Padding.Empty };
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            var button = new Button { Text = buttonText, AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
+            var button = new FluentButton { Text = buttonText, AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
             button.Click += click;
             panel.Controls.Add(textBox, 0, 0);
             panel.Controls.Add(button, 1, 0);
@@ -304,9 +304,9 @@ namespace CmdsManager.Presentation.Forms
         {
             var row = table.RowCount++;
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            table.Controls.Add(new Label { Text = labelText, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(2, 6, 6, 5) }, 0, row);
+            table.Controls.Add(new Label { Text = labelText, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(2, 5, 6, 3) }, 0, row);
             control.Dock = control is CheckBox || control is Label ? DockStyle.Top : DockStyle.Fill;
-            control.Margin = new Padding(2, 2, 2, 3);
+            control.Margin = new Padding(2, 1, 2, 2);
             table.Controls.Add(control, 1, row);
         }
 
@@ -315,7 +315,7 @@ namespace CmdsManager.Presentation.Forms
             var row = table.RowCount++;
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             control.Dock = control is Label ? DockStyle.Top : DockStyle.Fill;
-            control.Margin = new Padding(2, 2, 2, 3);
+            control.Margin = new Padding(2, 1, 2, 2);
             table.Controls.Add(control, 0, row);
             table.SetColumnSpan(control, 2);
         }

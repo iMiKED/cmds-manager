@@ -586,30 +586,54 @@ namespace CmdsManager.Tests
                             control.BorderStyle == BorderStyle.None && control.Parent.GetType().Name == "FluentNumericUpDown"),
                         "settings Fluent numeric fields use a taller custom border around the native editor");
                     var numeric = AllControls(script).OfType<NumericUpDown>().ToArray();
+                    var fluentNumeric = AllControls(script)
+                        .Where(control => control.GetType().Name == "FluentNumericUpDown").ToArray();
                     Equal(3, numeric.Length, "script editor has three compact numeric settings");
-                    Assert(numeric.All(control => control.Width <= 65) && numeric.Select(control => control.Parent).Distinct().Count() == 1,
+                    Equal(3, fluentNumeric.Length, "script editor wraps every numeric setting in Fluent chrome");
+                    Assert(numeric.All(control => control.Width <= 65 && control.BorderStyle == BorderStyle.None) &&
+                        fluentNumeric.All(control => control.Width <= 65 && control.Height >= 28) &&
+                        fluentNumeric.Select(control => control.Parent).Distinct().Count() == 1,
                         "order, delay, and timeout fields share one compact row");
                     Assert(!AllControls(script).OfType<TabControl>().Any(), "launch settings are on the same page instead of a second tab");
                     var encodingLabel = AllControls(script).OfType<Label>().First(control => control.Text == text["Script.Encoding"]);
                     var editorTable = encodingLabel.Parent as TableLayoutPanel;
                     var encodingCombo = editorTable?.Controls.OfType<ComboBox>()
                         .FirstOrDefault(control => editorTable.GetRow(control) == editorTable.GetRow(encodingLabel));
-                    Assert(encodingCombo != null && Math.Abs(AbsoluteTop(encodingCombo, script) - AbsoluteTop(encodingLabel, script)) <= 4,
-                        "output encoding label is beside its drop-down");
+                    var encodingLabelCenter = AbsoluteTop(encodingLabel, script) + encodingLabel.Height / 2;
+                    var encodingComboCenter = encodingCombo == null ? -1 : AbsoluteTop(encodingCombo, script) + encodingCombo.Height / 2;
+                    Assert(encodingCombo != null && Math.Abs(encodingComboCenter - encodingLabelCenter) <= 2,
+                        "output encoding label is vertically centered beside its Fluent selector");
 
-                    var alignedTextInputs = AllControls(script).OfType<TextBox>()
-                        .Where(control => !(control.Parent is NumericUpDown)).ToArray();
+                    var alignedTextInputs = AllControls(script)
+                        .Where(control => control.GetType().Name == "FluentTextBox").ToArray();
+                    Equal(4, alignedTextInputs.Length, "script editor exposes four Fluent text fields");
                     Assert(alignedTextInputs.Select(control => AbsoluteLeft(control, script)).Distinct().Count() == 1,
                         "script text boxes share one left edge");
                     var alignedCombos = AllControls(script).OfType<ComboBox>().ToArray();
+                    Equal(4, alignedCombos.Length, "script editor exposes four launch selectors");
                     Assert(alignedCombos.Select(control => AbsoluteLeft(control, script)).Distinct().Count() == 1,
                         "script drop-downs share one left edge");
                     var alignedChecks = AllControls(script).OfType<CheckBox>()
                         .Where(control => control.Text != text["Script.Enabled"]).ToArray();
                     Assert(alignedChecks.Select(control => AbsoluteLeft(control, script)).Distinct().Count() == 1,
                         "script option checkboxes share one left edge");
-                    Equal(AbsoluteLeft(alignedCombos[0], script), AbsoluteLeft(numeric[0].Parent, script),
+                    Assert(alignedTextInputs.All(control => control.Height >= 28) &&
+                        AllControls(script).OfType<TextBox>()
+                            .Where(control => control.Parent.GetType().Name == "FluentTextBox")
+                            .All(control => control.BorderStyle == BorderStyle.None) &&
+                        alignedCombos.All(control => control.GetType().Name == "FluentComboBox") &&
+                        AllControls(script).OfType<CheckBox>().All(control => control.GetType().Name == "FluentCheckBox") &&
+                        AllControls(script).OfType<Button>().All(control => control.GetType().Name == "FluentButton"),
+                        "script editor uses Fluent text fields, selectors, checkboxes, and buttons");
+                    Equal(AbsoluteLeft(alignedCombos[0], script), AbsoluteLeft(fluentNumeric[0].Parent, script),
                         "compact numeric row starts at the common control edge");
+                    Assert(fluentNumeric.All(control => AbsoluteLeft(control, script) + control.Width <= script.ClientSize.Width),
+                        "compact Fluent numeric fields remain inside the dialog client area");
+                    var scriptNote = AllControls(script).OfType<Label>().Single(control => control.Text == text["Script.Note"]);
+                    var scriptFooter = AllControls(script).OfType<Button>()
+                        .Single(control => control.Text == text["Common.Save"]).Parent;
+                    Assert(AbsoluteTop(scriptNote, script) + scriptNote.Height <= AbsoluteTop(scriptFooter, script),
+                        "script note and Fluent footer do not overlap");
 
                     var author = AllControls(about).OfType<LinkLabel>()
                         .Single(control => control.Text.StartsWith("Author: iMiKED from 4PDA", StringComparison.Ordinal));
@@ -905,7 +929,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.6.3", form.Text,
+                    Equal("Cmds Manager 0.6.4", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
