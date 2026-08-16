@@ -18,10 +18,10 @@ namespace CmdsManager.Presentation.Forms
         private readonly CheckBox _autoStartScripts = new FluentCheckBox();
         private readonly CheckBox _confirmDelete = new FluentCheckBox();
         private readonly CheckBox _logScriptOutput = new FluentCheckBox();
-        private readonly TextBox _editorPath = new FluentTextBox();
-        private readonly TextBox _editorArguments = new FluentTextBox();
-        private readonly TextBox _powerShell7Path = new FluentTextBox();
-        private readonly NumericUpDown _retention = new FluentNumericUpDown
+        private readonly FluentTextBox _editorPath = new FluentTextBox();
+        private readonly FluentTextBox _editorArguments = new FluentTextBox();
+        private readonly FluentTextBox _powerShell7Path = new FluentTextBox();
+        private readonly FluentNumericUpDown _retention = new FluentNumericUpDown
         {
             Minimum = 1,
             Maximum = 3650,
@@ -30,16 +30,16 @@ namespace CmdsManager.Presentation.Forms
         };
         private readonly ComboBox _language = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly ComboBox _theme = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly TextBox _fontDisplay = new FluentTextBox { ReadOnly = true };
+        private readonly FluentTextBox _fontDisplay = new FluentTextBox { ReadOnly = true };
         private readonly Button _consoleTextColor = ColorButton();
         private readonly Button _consoleBackgroundColor = ColorButton();
         private readonly Button _tabTextColor = ColorButton();
         private readonly Button _activeTabTextColor = ColorButton();
         private readonly Button _tabBackgroundColor = ColorButton();
         private readonly Button _activeTabBackgroundColor = ColorButton();
-        private readonly NumericUpDown _consoleOpacity = OpacityField();
-        private readonly NumericUpDown _tabOpacity = OpacityField();
-        private readonly NumericUpDown _activeTabOpacity = OpacityField();
+        private readonly FluentNumericUpDown _consoleOpacity = OpacityField();
+        private readonly FluentNumericUpDown _tabOpacity = OpacityField();
+        private readonly FluentNumericUpDown _activeTabOpacity = OpacityField();
         private string _fontName;
         private float _fontSize;
 
@@ -228,7 +228,7 @@ namespace CmdsManager.Presentation.Forms
             return panel;
         }
 
-        private Control WithFileButton(TextBox textBox, string filter)
+        private Control WithFileButton(FluentTextBox textBox, string filter)
         {
             textBox.Dock = DockStyle.Fill;
             textBox.Margin = Padding.Empty;
@@ -291,7 +291,7 @@ namespace CmdsManager.Presentation.Forms
             return button;
         }
 
-        private static NumericUpDown OpacityField()
+        private static FluentNumericUpDown OpacityField()
         {
             return new FluentNumericUpDown
             {
@@ -316,7 +316,7 @@ namespace CmdsManager.Presentation.Forms
             return panel;
         }
 
-        private static Control ColorWithOpacity(Button button, NumericUpDown opacity)
+        private static Control ColorWithOpacity(Button button, FluentNumericUpDown opacity)
         {
             var panel = new FlowLayoutPanel
             {
@@ -352,7 +352,7 @@ namespace CmdsManager.Presentation.Forms
             var row = table.RowCount++;
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             table.Controls.Add(new Label { Text = labelText, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(2, 6, 6, 5) }, 0, row);
-            if (control is NumericUpDown)
+            if (control is FluentNumericUpDown)
             {
                 control.Dock = DockStyle.None;
                 control.Anchor = AnchorStyles.Left;

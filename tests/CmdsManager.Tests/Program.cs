@@ -563,18 +563,28 @@ namespace CmdsManager.Tests
                     Equal(6, colorButtons.Length, "appearance tab exposes all console and tab colors");
                     Assert(colorButtons.Select(control => AbsoluteLeft(control, settings)).Distinct().Count() == 1,
                         "appearance color controls share one left edge");
-                    var settingsTextInputs = AllControls(settings).OfType<TextBox>()
-                        .Where(control => !(control.Parent is NumericUpDown)).ToArray();
+                    var settingsTextInputs = AllControls(settings)
+                        .Where(control => control.GetType().Name == "FluentTextBox").ToArray();
                     Equal(4, settingsTextInputs.Length,
                         "settings exposes the console font, editor, editor arguments, and pwsh path fields");
                     Assert(settingsTextInputs.Select(control => AbsoluteLeft(control, settings)).Distinct().Count() == 1,
                         "settings text fields share one left edge, including console font and pwsh path");
-                    Assert(settingsTextInputs.All(control => control.GetType().Name == "FluentTextBox") &&
-                        AllControls(settings).OfType<ComboBox>().All(control => control.GetType().Name == "FluentComboBox") &&
+                    Assert(AllControls(settings).OfType<ComboBox>().All(control => control.GetType().Name == "FluentComboBox") &&
                         AllControls(settings).OfType<CheckBox>().All(control => control.GetType().Name == "FluentCheckBox") &&
-                        AllControls(settings).OfType<NumericUpDown>().All(control => control.GetType().Name == "FluentNumericUpDown") &&
+                        AllControls(settings).Count(control => control.GetType().Name == "FluentNumericUpDown") == 4 &&
                         AllControls(settings).OfType<Button>().All(control => control.GetType().Name == "FluentButton"),
                         "settings uses Fluent inputs, selectors, checkboxes, numeric fields, and buttons");
+                    var settingsNativeTextEditors = AllControls(settings).OfType<TextBox>()
+                        .Where(control => control.Parent.GetType().Name == "FluentTextBox").ToArray();
+                    Assert(settingsTextInputs.All(control => control.Height >= 28) &&
+                        settingsNativeTextEditors.Length == 4 &&
+                        settingsNativeTextEditors.All(control => control.BorderStyle == BorderStyle.None),
+                        "settings Fluent text fields use a taller custom border around the native editor");
+                    Assert(AllControls(settings).Where(control => control.GetType().Name == "FluentNumericUpDown")
+                            .All(control => control.Height >= 28) &&
+                        AllControls(settings).OfType<NumericUpDown>().All(control =>
+                            control.BorderStyle == BorderStyle.None && control.Parent.GetType().Name == "FluentNumericUpDown"),
+                        "settings Fluent numeric fields use a taller custom border around the native editor");
                     var numeric = AllControls(script).OfType<NumericUpDown>().ToArray();
                     Equal(3, numeric.Length, "script editor has three compact numeric settings");
                     Assert(numeric.All(control => control.Width <= 65) && numeric.Select(control => control.Parent).Distinct().Count() == 1,
@@ -895,7 +905,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 0.6.2", form.Text,
+                    Equal("Cmds Manager 0.6.3", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");

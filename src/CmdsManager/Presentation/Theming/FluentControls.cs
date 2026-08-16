@@ -293,80 +293,117 @@ namespace CmdsManager.Presentation.Theming
         }
     }
 
-    internal sealed class FluentTextBox : TextBox, IFluentThemedControl
+    internal sealed class FluentTextBox : UserControl, IFluentThemedControl
     {
-        private const int WmPaint = 0x000F;
-        private const int WmNcPaint = 0x0085;
+        private const int ControlHeight = 29;
+        private const int CornerRadius = 6;
+        private const int HorizontalTextMargin = 8;
+        private readonly TextBox _editor;
         private AppThemePalette _palette = AppThemePalette.Light();
         private bool _hot;
 
         internal FluentTextBox()
         {
-            BorderStyle = BorderStyle.FixedSingle;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            MinimumSize = new Size(0, ControlHeight);
+            Size = new Size(100, ControlHeight);
+            Height = ControlHeight;
+
+            _editor = new TextBox
+            {
+                BorderStyle = BorderStyle.None,
+                Tag = AppThemeManager.PreserveColorsTag
+            };
+            Controls.Add(_editor);
+            _editor.TextChanged += (sender, args) =>
+            {
+                if (!string.Equals(base.Text, _editor.Text, StringComparison.Ordinal)) base.Text = _editor.Text;
+            };
+            _editor.Enter += (sender, args) => Invalidate();
+            _editor.Leave += (sender, args) => Invalidate();
+            TrackHover(this);
+            LayoutEditor();
         }
+
+        public override string Text
+        {
+            get { return _editor == null ? base.Text : _editor.Text; }
+            set
+            {
+                base.Text = value ?? string.Empty;
+                if (_editor != null && !string.Equals(_editor.Text, base.Text, StringComparison.Ordinal))
+                    _editor.Text = base.Text;
+            }
+        }
+
+        internal bool ReadOnly { get { return _editor.ReadOnly; } set { _editor.ReadOnly = value; } }
 
         public void ApplyPalette(AppThemePalette palette)
         {
             _palette = palette ?? AppThemePalette.Light();
             BackColor = _palette.Input;
             ForeColor = _palette.Text;
-            BorderStyle = BorderStyle.FixedSingle;
-            FluentGeometry.ApplyRoundedRegion(this, 5f);
-            Invalidate();
+            _editor.BackColor = _palette.Input;
+            _editor.ForeColor = _palette.Text;
+            _editor.BorderStyle = BorderStyle.None;
+            FluentGeometry.ApplyRoundedRegion(this, CornerRadius);
+            Invalidate(true);
         }
 
-        protected override void WndProc(ref Message message)
+        public override Size GetPreferredSize(Size proposedSize)
         {
-            base.WndProc(ref message);
-            if ((message.Msg == WmPaint || message.Msg == WmNcPaint) && IsHandleCreated)
-                DrawBorder();
+            var preferred = base.GetPreferredSize(proposedSize);
+            return new Size(preferred.Width, Math.Max(ControlHeight, _editor.PreferredHeight + 10));
         }
 
         protected override void OnResize(EventArgs args)
         {
             base.OnResize(args);
-            FluentGeometry.ApplyRoundedRegion(this, 5f);
+            LayoutEditor();
+            FluentGeometry.ApplyRoundedRegion(this, CornerRadius);
         }
 
-        protected override void OnMouseEnter(EventArgs args)
+        protected override void OnPaint(PaintEventArgs args)
         {
-            base.OnMouseEnter(args);
-            _hot = true;
-            Invalidate();
-        }
-
-        protected override void OnMouseLeave(EventArgs args)
-        {
-            base.OnMouseLeave(args);
-            _hot = false;
-            Invalidate();
-        }
-
-        protected override void OnGotFocus(EventArgs args)
-        {
-            base.OnGotFocus(args);
-            Invalidate();
-        }
-
-        protected override void OnLostFocus(EventArgs args)
-        {
-            base.OnLostFocus(args);
-            Invalidate();
-        }
-
-        private void DrawBorder()
-        {
-            using (var graphics = Graphics.FromHwnd(Handle))
             using (var path = FluentGeometry.RoundedRectangle(
-                new RectangleF(0.5f, 0.5f, Math.Max(1f, Width - 1f), Math.Max(1f, Height - 1f)), 5f))
-            using (var pen = new Pen(Focused ? _palette.Accent : _hot ? _palette.MutedText : _palette.Border, 1f)
+                new RectangleF(0.5f, 0.5f, Math.Max(1f, Width - 1f), Math.Max(1f, Height - 1f)), CornerRadius))
+            using (var pen = new Pen(_editor.Focused ? _palette.Accent : _hot ? _palette.MutedText : _palette.Border, 1f)
             {
                 Alignment = PenAlignment.Inset
             })
             {
-                graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                graphics.DrawPath(pen, path);
+                args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                args.Graphics.DrawPath(pen, path);
             }
+        }
+
+        protected override void OnClick(EventArgs args)
+        {
+            base.OnClick(args);
+            _editor.Focus();
+        }
+
+        private void LayoutEditor()
+        {
+            if (_editor == null) return;
+            var editorHeight = _editor.PreferredHeight;
+            _editor.SetBounds(HorizontalTextMargin, Math.Max(0, (Height - editorHeight) / 2),
+                Math.Max(1, Width - HorizontalTextMargin * 2), editorHeight);
+        }
+
+        private void TrackHover(Control control)
+        {
+            control.MouseEnter += (sender, args) => SetHot(true);
+            control.MouseLeave += (sender, args) => SetHot(ClientRectangle.Contains(PointToClient(MousePosition)));
+            foreach (Control child in control.Controls) TrackHover(child);
+        }
+
+        private void SetHot(bool value)
+        {
+            if (_hot == value) return;
+            _hot = value;
+            Invalidate();
         }
     }
 
@@ -490,93 +527,123 @@ namespace CmdsManager.Presentation.Theming
         }
     }
 
-    internal sealed class FluentNumericUpDown : NumericUpDown, IFluentThemedControl
+    internal sealed class FluentNumericUpDown : UserControl, IFluentThemedControl
     {
-        private const int WmPaint = 0x000F;
-        private const int WmNcPaint = 0x0085;
+        private const int ControlHeight = 29;
+        private const int CornerRadius = 6;
+        private readonly NumericUpDown _valueControl;
         private AppThemePalette _palette = AppThemePalette.Light();
         private bool _hot;
 
         internal FluentNumericUpDown()
         {
-            BorderStyle = BorderStyle.FixedSingle;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            MinimumSize = new Size(0, ControlHeight);
+            Size = new Size(72, ControlHeight);
+            Height = ControlHeight;
+
+            _valueControl = new NumericUpDown
+            {
+                AutoSize = true,
+                BorderStyle = BorderStyle.None,
+                Tag = AppThemeManager.PreserveColorsTag,
+                TextAlign = HorizontalAlignment.Right
+            };
+            Controls.Add(_valueControl);
+            _valueControl.Enter += (sender, args) => Invalidate();
+            _valueControl.Leave += (sender, args) => Invalidate();
+            TrackHover(this);
             AttachButtonPainter();
+            LayoutEditor();
         }
+
+        internal decimal Minimum { get { return _valueControl.Minimum; } set { _valueControl.Minimum = value; } }
+        internal decimal Maximum { get { return _valueControl.Maximum; } set { _valueControl.Maximum = value; } }
+        internal decimal Value { get { return _valueControl.Value; } set { _valueControl.Value = value; } }
+        internal decimal Increment { get { return _valueControl.Increment; } set { _valueControl.Increment = value; } }
+        internal int DecimalPlaces { get { return _valueControl.DecimalPlaces; } set { _valueControl.DecimalPlaces = value; } }
+        internal HorizontalAlignment TextAlign { get { return _valueControl.TextAlign; } set { _valueControl.TextAlign = value; } }
 
         public void ApplyPalette(AppThemePalette palette)
         {
             _palette = palette ?? AppThemePalette.Light();
             BackColor = _palette.Input;
             ForeColor = _palette.Text;
-            BorderStyle = BorderStyle.FixedSingle;
-            foreach (Control child in Controls)
+            _valueControl.BackColor = _palette.Input;
+            _valueControl.ForeColor = _palette.Text;
+            _valueControl.BorderStyle = BorderStyle.None;
+            foreach (Control child in _valueControl.Controls)
             {
                 child.BackColor = _palette.Input;
                 child.ForeColor = _palette.Text;
                 var editor = child as TextBoxBase;
                 if (editor != null) editor.BorderStyle = BorderStyle.None;
             }
-            FluentGeometry.ApplyRoundedRegion(this, 5f);
+            AttachButtonPainter();
+            FluentGeometry.ApplyRoundedRegion(this, CornerRadius);
             Invalidate(true);
         }
 
-        protected override void WndProc(ref Message message)
+        public override Size GetPreferredSize(Size proposedSize)
         {
-            base.WndProc(ref message);
-            if ((message.Msg == WmPaint || message.Msg == WmNcPaint) && IsHandleCreated)
-                DrawBorder();
+            var preferred = base.GetPreferredSize(proposedSize);
+            return new Size(preferred.Width, Math.Max(ControlHeight, _valueControl.PreferredHeight + 10));
         }
 
         protected override void OnResize(EventArgs args)
         {
             base.OnResize(args);
-            FluentGeometry.ApplyRoundedRegion(this, 5f);
+            LayoutEditor();
+            FluentGeometry.ApplyRoundedRegion(this, CornerRadius);
         }
 
-        protected override void OnMouseEnter(EventArgs args)
+        protected override void OnPaint(PaintEventArgs args)
         {
-            base.OnMouseEnter(args);
-            _hot = true;
-            Invalidate();
-        }
-
-        protected override void OnMouseLeave(EventArgs args)
-        {
-            base.OnMouseLeave(args);
-            _hot = false;
-            Invalidate();
-        }
-
-        protected override void OnEnter(EventArgs args)
-        {
-            base.OnEnter(args);
-            Invalidate();
-        }
-
-        protected override void OnLeave(EventArgs args)
-        {
-            base.OnLeave(args);
-            Invalidate();
-        }
-
-        private void DrawBorder()
-        {
-            using (var graphics = Graphics.FromHwnd(Handle))
+            base.OnPaint(args);
             using (var path = FluentGeometry.RoundedRectangle(
-                new RectangleF(0.5f, 0.5f, Math.Max(1f, Width - 1f), Math.Max(1f, Height - 1f)), 5f))
-            using (var pen = new Pen(Focused ? _palette.Accent : _hot ? _palette.MutedText : _palette.Border, 1f)
+                new RectangleF(0.5f, 0.5f, Math.Max(1f, Width - 1f), Math.Max(1f, Height - 1f)), CornerRadius))
+            using (var pen = new Pen(_valueControl.Focused ? _palette.Accent : _hot ? _palette.MutedText : _palette.Border, 1f)
             {
                 Alignment = PenAlignment.Inset
             })
             {
-                graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                graphics.DrawPath(pen, path);
+                args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                args.Graphics.DrawPath(pen, path);
             }
+        }
+
+        protected override void OnClick(EventArgs args)
+        {
+            base.OnClick(args);
+            _valueControl.Focus();
+        }
+
+        private void LayoutEditor()
+        {
+            if (_valueControl == null) return;
+            var editorHeight = _valueControl.PreferredHeight;
+            _valueControl.SetBounds(2, Math.Max(0, (Height - editorHeight) / 2),
+                Math.Max(1, Width - 4), editorHeight);
+        }
+
+        private void TrackHover(Control control)
+        {
+            control.MouseEnter += (sender, args) => SetHot(true);
+            control.MouseLeave += (sender, args) => SetHot(ClientRectangle.Contains(PointToClient(MousePosition)));
+            foreach (Control child in control.Controls) TrackHover(child);
+        }
+
+        private void SetHot(bool value)
+        {
+            if (_hot == value) return;
+            _hot = value;
+            Invalidate();
         }
 
         private void AttachButtonPainter()
         {
-            var buttons = Controls.Cast<Control>().FirstOrDefault(control =>
+            var buttons = _valueControl.Controls.Cast<Control>().FirstOrDefault(control =>
                 control.GetType().Name.IndexOf("UpDownButtons", StringComparison.OrdinalIgnoreCase) >= 0);
             if (buttons == null) return;
             buttons.Paint -= DrawButtons;
