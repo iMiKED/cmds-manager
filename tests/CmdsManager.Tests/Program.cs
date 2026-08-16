@@ -436,9 +436,10 @@ namespace CmdsManager.Tests
                 const string oemPhrase = "Привет из OEM";
                 const string windowsPhrase = "Файл не найден.";
                 var oem = Encoding.GetEncoding((int)GetOEMCP());
+                var oem866 = Encoding.GetEncoding(866);
                 Equal(windowsPhrase, OutputEncodingDecoder.Decode(Encoding.GetEncoding(1251).GetBytes(windowsPhrase),
                     ScriptOutputEncoding.Auto), "Auto detects Windows-1251 Cyrillic");
-                Equal(windowsPhrase, OutputEncodingDecoder.Decode(oem.GetBytes(windowsPhrase),
+                Equal(windowsPhrase, OutputEncodingDecoder.Decode(oem866.GetBytes(windowsPhrase),
                     ScriptOutputEncoding.Auto), "Auto detects OEM Cyrillic");
                 if (oem.GetString(oem.GetBytes(oemPhrase)) == oemPhrase)
                 {
