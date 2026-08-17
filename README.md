@@ -25,6 +25,19 @@ The application is built with C# and Windows Forms for .NET Framework 4.8. The
 release contains one production executable and does not bundle PowerShell, .NET,
 Chromium, Qt, Python, or another large runtime.
 
+## Support the Project
+
+If you like Cmds Manager or it saves you time, you can support the author:
+
+- Russia transfers: [Ozon Bank / SBP](https://finance.ozon.ru/apps/sbp/ozonbankpay/019a0a87-1f4a-7df8-97c7-ef32ebf9a0e3)
+- VISA: `4400430236422744`
+- [Buy Me a Coffee](https://buymeacoffee.com/danceworldtv)
+- [PayPal](https://paypal.me/imiked)
+- [Boosty](https://boosty.to/danceworldtv/donate)
+- USDT Ethereum (ERC20): `0xBd0593dDF1DFC7fD95bB6F4e6A5c73Da44048B40`
+- USDT TON: `UQCr2Fp7t34QFuO4IesN3Lo3186a93Z1B7Wu76imr6APIXgk`
+- USDT Tron (TRC20): `TE5A3GT84eJ9iT3mYYLv1KXJnMaiZFxNuA`
+
 ## Features
 
 ### Script management
@@ -172,23 +185,6 @@ For release validation, the expected tag can be supplied explicitly:
 
 The command fails when the tag and `AssemblyInformationalVersion` differ.
 
-## Continuous integration and releases
-
-The [Build workflow](.github/workflows/build.yml) runs on pushes to `main`, pull
-requests, manual dispatches, and tag pushes. It builds and tests the Windows x64
-application and uploads the Portable ZIP as a workflow artifact.
-
-When a tag is pushed, the workflow verifies that the tag equals the application
-version, then creates or updates the matching GitHub Release and attaches the
-Portable ZIP. Release tags use the plain semantic version form, for example:
-
-```powershell
-git tag -a 1.0.0 -m "Cmds Manager 1.0.0"
-git push origin 1.0.0
-```
-
-The [CodeQL workflow](.github/workflows/codeql.yml) performs compiled C# security
-analysis on `main`, pull requests, manual runs, and a weekly schedule.
 
 ## Portable package contents
 
@@ -198,9 +194,6 @@ CmdsManager.exe.config
 CmdsManager.ini.example
 Readme.txt
 ```
-
-`README.md`, source files, build tools, test binaries, and runtime frameworks are
-not placed beside the application in the release archive.
 
 ## Project layout
 
@@ -214,18 +207,6 @@ build.ps1                     Release build and packaging entry point
 Readme.txt                    Portable bilingual user documentation
 ```
 
-## Support the Project
-
-If Cmds Manager saves you time, you can support the author:
-
-- Russia transfers: [Ozon Bank / SBP](https://finance.ozon.ru/apps/sbp/ozonbankpay/019a0a87-1f4a-7df8-97c7-ef32ebf9a0e3)
-- VISA: `4400430236422744`
-- [Buy Me a Coffee](https://buymeacoffee.com/danceworldtv)
-- [PayPal](https://paypal.me/imiked)
-- [Boosty](https://boosty.to/danceworldtv/donate)
-- USDT Ethereum (ERC20): `0xBd0593dDF1DFC7fD95bB6F4e6A5c73Da44048B40`
-- USDT TON: `UQCr2Fp7t34QFuO4IesN3Lo3186a93Z1B7Wu76imr6APIXgk`
-- USDT Tron (TRC20): `TE5A3GT84eJ9iT3mYYLv1KXJnMaiZFxNuA`
 
 ## Author
 
