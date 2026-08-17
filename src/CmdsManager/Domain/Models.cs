@@ -92,7 +92,7 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 8;
+        public int ConfigVersion { get; set; } = 9;
         public ApplicationTheme Theme { get; set; } = ApplicationTheme.System;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
@@ -114,6 +114,9 @@ namespace CmdsManager.Domain
         public string ConsoleFontName { get; set; } = "Consolas";
         public float ConsoleFontSize { get; set; } = 10f;
         public int ConsolePaneHeight { get; set; } = 235;
+        public int ConsoleBufferSizeKb { get; set; } = 256;
+        public bool ConsoleAutoRecord { get; set; }
+        public int ConsoleLogMaxSizeMb { get; set; } = 50;
         public string ConsoleForegroundColor { get; set; } = "#DCDCDC";
         public string ConsoleBackgroundColor { get; set; } = "#1C1C1C";
         public int ConsoleBackgroundOpacity { get; set; } = 100;

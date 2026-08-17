@@ -35,6 +35,8 @@ namespace CmdsManager.Tests
             Run("Parallel launch sessions", TestParallelLaunchSessions);
             Run("Compact localized dialogs", TestCompactLocalizedDialogs);
             Run("Batched console output", TestBatchedConsoleOutput);
+            Run("Console search and scroll lock", TestConsoleSearchAndScrollLock);
+            Run("Console recording and limits", TestConsoleRecording);
             Run("Running script visual indicator", TestRunningVisualIndicator);
             Run("Managed child CMD tabs", TestManagedChildCmdTabs);
             Run("Transformed START command IPC", TestTransformedStartCommandIpc);
@@ -84,6 +86,9 @@ namespace CmdsManager.Tests
                 configuration.Application.ConsoleFontName = "Consolas";
                 configuration.Application.ConsoleFontSize = 11.5f;
                 configuration.Application.ConsolePaneHeight = 210;
+                configuration.Application.ConsoleBufferSizeKb = 512;
+                configuration.Application.ConsoleAutoRecord = true;
+                configuration.Application.ConsoleLogMaxSizeMb = 12;
                 configuration.Application.ConsoleForegroundColor = "#A1B2C3";
                 configuration.Application.ConsoleBackgroundColor = "#102030";
                 configuration.Application.ConsoleBackgroundOpacity = 82;
@@ -133,6 +138,9 @@ namespace CmdsManager.Tests
                 Equal(0, reloaded.Localization.Languages["en"].Keys.Except(reloaded.Localization.Languages["ru"].Keys, StringComparer.OrdinalIgnoreCase).Count(), "every English key has a Russian value");
                 Equal(11.5f, reloaded.Application.ConsoleFontSize, "console font size");
                 Equal(210, reloaded.Application.ConsolePaneHeight, "console pane height");
+                Equal(512, reloaded.Application.ConsoleBufferSizeKb, "console buffer size");
+                Equal(true, reloaded.Application.ConsoleAutoRecord, "automatic console recording");
+                Equal(12, reloaded.Application.ConsoleLogMaxSizeMb, "console log size limit");
                 Equal("#A1B2C3", reloaded.Application.ConsoleForegroundColor, "console foreground color");
                 Equal("#102030", reloaded.Application.ConsoleBackgroundColor, "console background color");
                 Equal(82, reloaded.Application.ConsoleBackgroundOpacity, "console background opacity");
@@ -150,8 +158,10 @@ namespace CmdsManager.Tests
                 Equal(true, reloaded.Application.MainWindowMaximized, "main window maximized state");
                 var savedText = File.ReadAllText(configPath, Encoding.UTF8);
                 Assert(savedText.Contains("[Strings.ru]") && savedText.Contains("[Strings.en]"), "localization is stored in INI");
-                Assert(savedText.Contains("MainWindowPlacementSaved=true") && savedText.Contains("WordWrap=true"),
-                    "window placement and script word wrap are stored in INI");
+                Assert(savedText.Contains("MainWindowPlacementSaved=true") && savedText.Contains("WordWrap=true") &&
+                    savedText.Contains("ConsoleBufferSizeKb=512") && savedText.Contains("ConsoleAutoRecord=true") &&
+                    savedText.Contains("ConsoleLogMaxSizeMb=12"),
+                    "window placement, console limits, recording, and script word wrap are stored in INI");
 
                 reloaded.Scripts[0].Name = "Second save";
                 store.Save(reloaded);
@@ -164,7 +174,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(8, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(9, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -174,7 +184,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(8, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal(9, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
                 Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
                 Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
@@ -188,7 +198,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nSettings.Title=Настройки CmdsManager\r\n",
                     new UTF8Encoding(false));
                 var version5 = new ConfigurationStore(version5Path).LoadOrCreate();
-                Equal(8, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
+                Equal(9, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
                 Equal("Cmds Manager settings", version5.Localization.Languages["en"]["Settings.Title"],
                     "old default English brand is migrated");
                 Equal("Настройки Cmds Manager", version5.Localization.Languages["ru"]["Settings.Title"],
@@ -197,7 +207,7 @@ namespace CmdsManager.Tests
                 var version6Path = Path.Combine(directory, "Version6.ini");
                 File.WriteAllText(version6Path, "[Application]\r\nConfigVersion=6\r\n", new UTF8Encoding(false));
                 var version6 = new ConfigurationStore(version6Path).LoadOrCreate();
-                Equal(8, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
+                Equal(9, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
                 Equal(ApplicationTheme.System, version6.Application.Theme,
                     "existing installations default to the system application theme");
                 Assert(File.ReadAllText(version6Path, Encoding.UTF8).Contains("Theme=System"),
@@ -213,7 +223,7 @@ namespace CmdsManager.Tests
                     "Name=Version 7 script\r\nPath=" + scriptPath + "\r\n",
                     new UTF8Encoding(false));
                 var version7 = new ConfigurationStore(version7Path).LoadOrCreate();
-                Equal(8, version7.Application.ConfigVersion, "version 7 configuration is upgraded");
+                Equal(9, version7.Application.ConfigVersion, "version 7 configuration is upgraded");
                 Equal(false, version7.Scripts[0].Launch.WordWrap,
                     "existing scripts receive the default disabled word-wrap setting");
                 var version7Text = File.ReadAllText(version7Path, Encoding.UTF8);
@@ -230,6 +240,10 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nAbout.Build=Сборка: {0}\r\n",
                     new UTF8Encoding(false));
                 var version8 = new ConfigurationStore(version8Path).LoadOrCreate();
+                Equal(9, version8.Application.ConfigVersion, "version 8 configuration is upgraded");
+                Equal(256, version8.Application.ConsoleBufferSizeKb, "version 8 receives the default console buffer");
+                Equal(false, version8.Application.ConsoleAutoRecord, "version 8 keeps automatic recording disabled");
+                Equal(50, version8.Application.ConsoleLogMaxSizeMb, "version 8 receives the default console log limit");
                 Equal("Built on: {0}", version8.Localization.Languages["en"]["About.Build"],
                     "unmodified English build label is refreshed within schema version 8");
                 Equal("Собрано: {0}", version8.Localization.Languages["ru"]["About.Build"],
@@ -247,7 +261,7 @@ namespace CmdsManager.Tests
                 @"..\..\..\..\Readme.txt"));
             Assert(File.Exists(readmePath), "release Readme.txt exists at the repository root");
             var guide = File.ReadAllText(readmePath, Encoding.UTF8);
-            Assert(guide.StartsWith("CMDS MANAGER 1.0.0", StringComparison.Ordinal),
+            Assert(guide.StartsWith("CMDS MANAGER 1.1.0", StringComparison.Ordinal),
                 "user guide identifies the stable release");
             foreach (var heading in new[]
             {
@@ -261,7 +275,7 @@ namespace CmdsManager.Tests
 
             foreach (var version in new[]
             {
-                "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
+                "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
                 "0.5.1", "0.5.0", "0.4.2", "0.4.1", "0.4.0", "0.3.0", "0.2.1", "0.2.0", "0.1.0-dev"
             })
             {
@@ -276,7 +290,8 @@ namespace CmdsManager.Tests
                 "MainWindowPlacementSaved", "MainWindowX", "MainWindowY", "MainWindowWidth",
                 "MainWindowHeight", "MainWindowMaximized", "EditorPath", "EditorArguments", "LogLevel",
                 "LogRetentionDays", "LogScriptOutput", "ConsoleFontName", "ConsoleFontSize",
-                "ConsolePaneHeight", "ConsoleForegroundColor", "ConsoleBackgroundColor",
+                "ConsolePaneHeight", "ConsoleBufferSizeKb", "ConsoleAutoRecord", "ConsoleLogMaxSizeMb",
+                "ConsoleForegroundColor", "ConsoleBackgroundColor",
                 "ConsoleBackgroundOpacity", "ConsoleTabForegroundColor", "ConsoleActiveTabForegroundColor",
                 "ConsoleTabBackgroundColor", "ConsoleTabBackgroundOpacity", "ConsoleActiveTabBackgroundColor",
                 "ConsoleActiveTabBackgroundOpacity", "Interpreter", "Arguments", "WorkingDirectory",
@@ -656,6 +671,9 @@ namespace CmdsManager.Tests
                         "dark application theme reaches compact dialogs");
                     Assert(AllControls(settings).OfType<TabControl>().Single().GetType().Name == "FluentTabControl",
                         "settings uses the themed compact tab control");
+                    var settingsTabs = AllControls(settings).OfType<TabControl>().Single();
+                    Assert(settingsTabs.TabPages.Cast<TabPage>().Any(page => page.Text == text["Settings.Tab.Console"]),
+                        "settings exposes a compact console configuration page");
                     var themeSelector = AllControls(settings).OfType<ComboBox>().Single(control =>
                         control.Items.Cast<object>().Select(Convert.ToString)
                             .SequenceEqual(new[] { "System", "Light", "Dark" }));
@@ -671,6 +689,17 @@ namespace CmdsManager.Tests
                     var retention = AllControls(settings).OfType<NumericUpDown>()
                         .Single(control => control.Maximum == 3650);
                     Assert(retention.Width <= 80, "log retention field is sized for its value");
+                    var bufferSize = AllControls(settings).OfType<NumericUpDown>()
+                        .Single(control => control.Maximum == 1048576);
+                    var consoleLogSize = AllControls(settings).OfType<NumericUpDown>()
+                        .Single(control => control.Maximum == 4096);
+                    Equal(256m, bufferSize.Value, "settings displays the console buffer size");
+                    Equal(50m, consoleLogSize.Value, "settings displays the maximum console log size");
+                    Assert(bufferSize.Width <= 100 && consoleLogSize.Width <= 85,
+                        "console limits use compact Fluent numeric fields");
+                    Assert(AllControls(settings).OfType<CheckBox>().Any(control =>
+                            control.Text == text["Settings.ConsoleAutoRecord"]),
+                        "settings exposes automatic console recording");
                     var opacityFields = AllControls(settings).OfType<NumericUpDown>()
                         .Where(control => control.Maximum == 100).ToArray();
                     Equal(3, opacityFields.Length, "appearance tab has three compact opacity fields");
@@ -689,7 +718,7 @@ namespace CmdsManager.Tests
                         "settings text fields share one left edge, including console font and pwsh path");
                     Assert(AllControls(settings).OfType<ComboBox>().All(control => control.GetType().Name == "FluentComboBox") &&
                         AllControls(settings).OfType<CheckBox>().All(control => control.GetType().Name == "FluentCheckBox") &&
-                        AllControls(settings).Count(control => control.GetType().Name == "FluentNumericUpDown") == 4 &&
+                        AllControls(settings).Count(control => control.GetType().Name == "FluentNumericUpDown") == 6 &&
                         AllControls(settings).OfType<Button>().All(control => control.GetType().Name == "FluentButton"),
                         "settings uses Fluent inputs, selectors, checkboxes, numeric fields, and buttons");
                     var settingsNativeTextEditors = AllControls(settings).OfType<TextBox>()
@@ -781,7 +810,7 @@ namespace CmdsManager.Tests
                         "embedded 128 px PNG icon frame is decoded without pixel corruption");
                     var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "Cmds Manager");
                     var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
-                    Equal("Version 1.0.0", aboutVersion.Text, "About contains the stable release version");
+                    Equal("Version 1.1.0", aboutVersion.Text, "About contains the stable release version");
                     var aboutBuild = AllControls(about).OfType<Label>()
                         .First(control => control.Text.StartsWith("Built on: ", StringComparison.Ordinal));
                     DateTime parsedBuildTimestamp;
@@ -875,6 +904,7 @@ namespace CmdsManager.Tests
                 var configuration = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini")).LoadOrCreate();
                 configuration.Application.ConsoleFontName = "Consolas";
                 configuration.Application.ConsoleFontSize = 12f;
+                configuration.Application.ConsoleBufferSizeKb = 64;
                 configuration.Application.ConsoleForegroundColor = "#A1B2C3";
                 configuration.Application.ConsoleBackgroundColor = "#102030";
                 configuration.Application.ConsoleBackgroundOpacity = 80;
@@ -915,7 +945,7 @@ namespace CmdsManager.Tests
 
                     Assert(output != null && output.Text.Contains("строка-19999"), "20,000 lines reach the console in one bounded batch window");
                     Assert(!output.Text.Contains("[4242 OUT]"), "console text has no PID OUT prefix");
-                    Assert(output.TextLength <= 200000, "console history is bounded");
+                    Assert(output.TextLength <= 64 * 1024, "configured console history buffer is bounded");
                     Assert(Math.Abs(output.Font.SizeInPoints - 12f) < 0.1f, "configured console font size is applied");
                     Equal(Color.FromArgb(0xA1, 0xB2, 0xC3), output.ForeColor,
                         "configured console text color is applied");
@@ -977,9 +1007,15 @@ namespace CmdsManager.Tests
                     Assert(menu != null && output.ContextMenuStrip == menu, "console tabs and output share the active-tab menu");
                     var menuTexts = menu.Items.OfType<ToolStripMenuItem>().Select(item => item.Text).ToArray();
                     Assert(menuTexts.Contains(text["Console.CopySelection"]), "console menu can copy selected text");
+                    Assert(menuTexts.Contains(text["Console.Find"]), "console menu can search the active buffer");
                     Assert(menuTexts.Contains(text["Console.SaveSelection"]), "console menu can save selected text");
                     Assert(menuTexts.Contains(text["Console.SaveAll"]), "console menu can save all text");
                     Assert(menuTexts.Contains(text["Console.SelectFont"]), "console menu can choose an active-tab font");
+                    Assert(menuTexts.Contains(text["Console.ScrollLock"]), "console menu can lock automatic scrolling");
+                    Assert(menuTexts.Contains(text["Console.StartRecording"]) &&
+                        menuTexts.Contains(text["Console.PauseRecording"]) &&
+                        menuTexts.Contains(text["Console.StopRecording"]),
+                        "console menu exposes recording start, pause, and stop commands");
                     Assert(menuTexts.Contains(text["Console.Detach"]), "console menu can detach the active tab");
                     Assert(menuTexts.Contains(text["Console.FullScreen"]), "console menu can show the active tab full screen");
                     Assert(menuTexts.Contains(text["Console.MaximizePane"]), "console menu can maximize the console area");
@@ -1069,6 +1105,162 @@ namespace CmdsManager.Tests
             });
         }
 
+        private static void TestConsoleSearchAndScrollLock()
+        {
+            WithTemporaryDirectory(directory =>
+            {
+                var configuration = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini")).LoadOrCreate();
+                configuration.Localization.Language = "en";
+                var state = new ConfigurationState(configuration);
+                var text = new LocalizationService(state);
+                using (var console = new ConsoleTabsControl(text, () => state.Current.Application))
+                {
+                    console.Size = new Size(760, 320);
+                    console.CreateControl();
+                    var scriptId = Guid.NewGuid();
+                    const int processId = 4545;
+                    console.EnqueueStarted(new ScriptInstanceEventArgs(scriptId, "Search console", processId,
+                        DateTime.Now, true, null));
+                    console.EnqueueOutput(new ScriptOutputEventArgs(scriptId, processId,
+                        "first needle occurrence", false));
+                    console.EnqueueOutput(new ScriptOutputEventArgs(scriptId, processId,
+                        "second needle occurrence", false));
+
+                    RichTextBox output = null;
+                    Assert(WaitWithUi(() =>
+                    {
+                        output = AllControls(console).OfType<RichTextBox>()
+                            .FirstOrDefault(control => processId.Equals(control.Tag));
+                        return output != null && output.Text.Contains("second needle");
+                    }, TimeSpan.FromSeconds(2)), "searchable console output is rendered");
+
+                    var tabs = FindControl<TerminalTabStrip>(console);
+                    var menu = tabs.ContextMenuStrip;
+                    menu.Items.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Console.Find"]).PerformClick();
+                    Form findWindow = null;
+                    Assert(WaitWithUi(() =>
+                    {
+                        findWindow = System.Windows.Forms.Application.OpenForms.Cast<Form>()
+                            .FirstOrDefault(form => form.GetType().Name == "ConsoleFindForm");
+                        return findWindow != null;
+                    }, TimeSpan.FromSeconds(2)), "Ctrl+F search uses a compact modeless find window");
+                    var query = AllControls(findWindow)
+                        .Single(control => control.GetType().Name == "FluentTextBox");
+                    query.Text = "needle";
+                    var findNext = findWindow.GetType().GetMethod("FindNext",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    Assert(findNext != null && (bool)findNext.Invoke(findWindow, null),
+                        "console search finds the first match with wrap-around");
+                    Equal("needle", output.SelectedText, "console search selects the match");
+                    var firstMatch = output.SelectionStart;
+                    Assert((bool)findNext.Invoke(findWindow, null) && output.SelectionStart > firstMatch,
+                        "repeated search advances to the next match");
+                    findWindow.Close();
+
+                    var scrollLock = menu.Items.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Console.ScrollLock"]);
+                    output.Select(0, 0);
+                    scrollLock.PerformClick();
+                    console.EnqueueOutput(new ScriptOutputEventArgs(scriptId, processId,
+                        "output while scrolling is locked", false));
+                    Assert(WaitWithUi(() => output.Text.Contains("output while scrolling is locked"),
+                        TimeSpan.FromSeconds(2)), "new output is appended while Scroll Lock is enabled");
+                    Equal(0, output.SelectionStart,
+                        "Scroll Lock preserves the console caret and viewport instead of following output");
+                    scrollLock.PerformClick();
+                    Equal(output.TextLength, output.SelectionStart,
+                        "disabling Scroll Lock returns the console to live output");
+                }
+            });
+        }
+
+        private static void TestConsoleRecording()
+        {
+            WithTemporaryDirectory(directory =>
+            {
+                var directLogDirectory = Path.Combine(directory, "direct");
+                string limitedPath;
+                using (var recorder = new ConsoleLogRecorder(directLogDirectory, "Limit test", 111,
+                    DateTime.Now, 128))
+                {
+                    recorder.Write("recorded-before-pause" + Environment.NewLine);
+                    recorder.Pause();
+                    recorder.Write("must-not-be-recorded" + Environment.NewLine);
+                    recorder.Resume();
+                    Assert(!recorder.Write(new string('x', 512)),
+                        "recorder reports that its hard size limit was reached");
+                    Equal(ConsoleRecordingState.LimitReached, recorder.State,
+                        "recorder exposes the size-limit state");
+                    Assert(recorder.BytesWritten <= 128, "console log never exceeds its configured byte limit");
+                    limitedPath = recorder.FilePath;
+                }
+                var limitedText = File.ReadAllText(limitedPath, Encoding.UTF8);
+                Assert(limitedText.Contains("recorded-before-pause") &&
+                    !limitedText.Contains("must-not-be-recorded") && limitedText.Contains("size limit reached"),
+                    "pause omits output and a capped log contains a readable limit marker");
+
+                var configuration = new ConfigurationStore(Path.Combine(directory, "CmdsManager.ini")).LoadOrCreate();
+                configuration.Application.ConsoleAutoRecord = true;
+                configuration.Application.ConsoleLogMaxSizeMb = 1;
+                configuration.Localization.Language = "en";
+                var state = new ConfigurationState(configuration);
+                var text = new LocalizationService(state);
+                var consoleLogDirectory = Path.Combine(directory, "console-logs");
+                using (var console = new ConsoleTabsControl(text, () => state.Current.Application,
+                    null, consoleLogDirectory))
+                {
+                    console.Size = new Size(760, 320);
+                    console.CreateControl();
+                    var scriptId = Guid.NewGuid();
+                    const int processId = 4646;
+                    console.EnqueueStarted(new ScriptInstanceEventArgs(scriptId, "Recorded script", processId,
+                        DateTime.Now, true, null));
+                    console.EnqueueOutput(new ScriptOutputEventArgs(scriptId, processId, "recorded-alpha", false));
+
+                    string logPath = null;
+                    Assert(WaitWithUi(() =>
+                    {
+                        logPath = Directory.Exists(consoleLogDirectory)
+                            ? Directory.GetFiles(consoleLogDirectory, "*.log").SingleOrDefault()
+                            : null;
+                        return logPath != null && ReadSharedText(logPath).Contains("recorded-alpha");
+                    }, TimeSpan.FromSeconds(3)), "automatic recording starts with a new console session");
+                    var tabs = FindControl<TerminalTabStrip>(console);
+                    Assert(tabs.GetTabText(0).Contains(text["Console.Recording"]),
+                        "the tab title indicates active recording");
+                    var menu = tabs.ContextMenuStrip;
+                    var pause = menu.Items.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Console.PauseRecording"]);
+                    var stop = menu.Items.OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == text["Console.StopRecording"]);
+
+                    pause.PerformClick();
+                    console.EnqueueOutput(new ScriptOutputEventArgs(scriptId, processId, "paused-beta", false));
+                    var output = AllControls(console).OfType<RichTextBox>()
+                        .Single(control => processId.Equals(control.Tag));
+                    Assert(WaitWithUi(() => output.Text.Contains("paused-beta"), TimeSpan.FromSeconds(2)),
+                        "paused recording does not pause the visible console");
+                    Assert(!ReadSharedText(logPath).Contains("paused-beta"),
+                        "paused recording omits new console output from the file");
+
+                    pause.PerformClick();
+                    console.EnqueueOutput(new ScriptOutputEventArgs(scriptId, processId, "resumed-gamma", false));
+                    Assert(WaitWithUi(() => ReadSharedText(logPath).Contains("resumed-gamma"),
+                        TimeSpan.FromSeconds(2)), "recording resumes into the same log file");
+
+                    stop.PerformClick();
+                    console.EnqueueOutput(new ScriptOutputEventArgs(scriptId, processId, "stopped-delta", false));
+                    Assert(WaitWithUi(() => output.Text.Contains("stopped-delta"), TimeSpan.FromSeconds(2)),
+                        "stopping recording leaves the console session running");
+                    Assert(!ReadSharedText(logPath).Contains("stopped-delta"),
+                        "stopped recording no longer changes the log file");
+                    Equal(1, Directory.GetFiles(consoleLogDirectory, "*.log").Length,
+                        "manual stop suppresses automatic recording restart for the current console");
+                }
+            });
+        }
+
         private static void TestRunningVisualIndicator()
         {
             WithTemporaryDirectory(directory =>
@@ -1128,7 +1320,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 1.0.0", form.Text,
+                    Equal("Cmds Manager 1.1.0", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
@@ -1601,6 +1793,14 @@ namespace CmdsManager.Tests
 
         [DllImport("kernel32.dll")]
         private static extern uint GetOEMCP();
+
+        private static string ReadSharedText(string path)
+        {
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete))
+            using (var reader = new StreamReader(stream, Encoding.UTF8, true))
+                return reader.ReadToEnd();
+        }
 
         private static void WithTemporaryDirectory(Action<string> action)
         {

@@ -26,6 +26,8 @@ namespace CmdsManager.Infrastructure.Windows
         internal const uint FileShareWrite = 0x00000002;
         internal const uint OpenExisting = 3;
         internal const int StdInputHandle = -10;
+        internal const int EmGetFirstVisibleLine = 0x00CE;
+        internal const int EmLineScroll = 0x00B6;
         internal static readonly IntPtr InvalidHandleValue = new IntPtr(-1);
 
         [StructLayout(LayoutKind.Sequential)]
@@ -176,5 +178,8 @@ namespace CmdsManager.Infrastructure.Windows
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetForegroundWindow(IntPtr window);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        internal static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
     }
 }

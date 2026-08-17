@@ -73,7 +73,9 @@ namespace CmdsManager.Presentation.Forms
             _startup = startup ?? throw new ArgumentNullException(nameof(startup));
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _text = text ?? throw new ArgumentNullException(nameof(text));
-            _console = new ConsoleTabsControl(_text, () => Configuration.Application, ResolveConsoleWordWrap)
+            _console = new ConsoleTabsControl(_text, () => Configuration.Application, ResolveConsoleWordWrap,
+                Path.Combine(Path.GetDirectoryName(_store.ConfigPath) ?? AppDomain.CurrentDomain.BaseDirectory,
+                    "logs", "console"))
                 { Dock = DockStyle.Fill };
 
             Text = ApplicationResources.WindowTitle;

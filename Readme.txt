@@ -1,4 +1,4 @@
-CMDS MANAGER 1.0.0
+CMDS MANAGER 1.1.0
 ==================
 
 Website: https://github.com/iMiKED/cmds-manager
@@ -59,6 +59,12 @@ unless the selected folder allows the application to update its INI and logs.
 - configure application auto-start for the current Windows user;
 - show a static green execution indicator and detailed runtime state;
 - capture stdout and stderr in a fast, bounded console history;
+- configure how much console history is kept in memory;
+- search the active console with Ctrl+F and move between matches with F3 or
+  Shift+F3;
+- freeze and resume automatic console scrolling with Scroll Lock;
+- record each console to a dedicated UTF-8 log automatically or on demand,
+  pause and resume recording, stop it, and enforce a per-file size limit;
 - use one neighboring console tab for every managed process instance;
 - stop the complete process tree through Windows Job Objects;
 - stop all managed scripts when Cmds Manager exits explicitly;
@@ -96,9 +102,9 @@ start "Child" /D "%ROOT_DIR%" cmd /k "%ROOT_DIR%child.cmd"
 CALL and ordinary in-process commands continue to use the parent tab because
 they share the parent interpreter and its output streams.
 
-Right-click a tab or its console to open commands for copying, saving, font,
-encoding, Word Wrap, detach, full screen, console-area maximize, clear, and
-close/stop.
+Right-click a tab or its console to open commands for search, Scroll Lock,
+recording, copying, saving, font, encoding, Word Wrap, detach, full screen,
+console-area maximize, clear, and close/stop.
 
 
 6. OUTPUT ENCODING
@@ -116,9 +122,18 @@ text already displayed in the tab is corrected as well.
 -------------------
 
 Application event logs are stored in the logs folder next to the executable.
-Captured script output is displayed in the application but is not written to a
-log unless LogScriptOutput=true is enabled. Script output may contain passwords,
-tokens, personal data, or other secrets. Enable output logging only when needed.
+When ConsoleAutoRecord=true, every new captured console is written to its own
+UTF-8 file under logs\console. Recording can also be started from the console
+context menu; a manual start first writes the currently visible buffer and then
+continues with new output. Recording can be paused, resumed, or stopped without
+stopping the process or its displayed output. ConsoleLogMaxSizeMb is a hard
+limit for each file. Files older than LogRetentionDays are removed when console
+recording starts.
+
+LogScriptOutput=true additionally writes captured stdout/stderr to the
+application event log. This is separate from per-console recording and may
+duplicate output. Script output may contain passwords, tokens, personal data,
+or other secrets. Enable either form of output logging only when needed.
 
 Cmds Manager does not add script arguments to its event log.
 
@@ -146,6 +161,13 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 ------------------
 
 The history below is derived from the Git commits of the application.
+
+1.1.0 - 18.08.2026
+- Added a configurable console history buffer size;
+- added separate UTF-8 recording for each console with automatic start,
+  pause/resume, stop, retention, and a hard per-file size limit;
+- added Ctrl+F search with next/previous navigation and match-case support;
+- added Scroll Lock for freezing the console viewport.
 
 1.0.0 - 17.08.2026
 - Added the Built on date and time, evenly aligned information rows, author,
@@ -212,8 +234,8 @@ variables such as %SystemRoot% are expanded.
 [Application]
 
 ConfigVersion
-  INI schema version maintained by Cmds Manager. Current value: 8. Do not lower
-  it manually. Configurations from versions 1 through 7 are migrated to 8.
+  INI schema version maintained by Cmds Manager. Current value: 9. Do not lower
+  it manually. Configurations from versions 1 through 8 are migrated to 9.
 
 Theme
   Application shell theme: System, Light, or Dark. Default: System.
@@ -264,8 +286,9 @@ LogLevel
   information, warning, and error events. Default: Information.
 
 LogRetentionDays
-  Age after which CmdsManager-YYYYMMDD.log files are removed at startup.
-  Allowed range: 1 through 3650. Default: 14.
+  Age after which event and console log files are removed. Event logs are
+  cleaned at startup; console logs are cleaned when recording starts.
+  Allowed range: 1 through 3650 days. Default: 14.
 
 LogScriptOutput
   true writes captured stdout/stderr to the event log. Default: false.
@@ -279,6 +302,20 @@ ConsoleFontSize
 ConsolePaneHeight
   Saved lower console-area height in pixels. Allowed range: 100 through 4000.
   Default: 235.
+
+ConsoleBufferSizeKb
+  Maximum displayed history kept for each console, in KiB. When the limit is
+  exceeded, the oldest text is trimmed to leave approximately 75 percent of
+  the configured capacity. Allowed range: 64 through 1048576. Default: 256.
+
+ConsoleAutoRecord
+  true starts a dedicated UTF-8 log for every new captured console. The files
+  are stored under logs\console. Default: false.
+
+ConsoleLogMaxSizeMb
+  Hard maximum size of one dedicated console log file, in MiB. Recording stops
+  for that console when the limit is reached. Allowed range: 1 through 4096.
+  Default: 50.
 
 ConsoleForegroundColor
   Console text color in #RRGGBB format. Default: #DCDCDC.
@@ -472,6 +509,12 @@ Files, если выбранная папка не позволяет обнов
 - автозапуск приложения для текущего пользователя Windows;
 - статичный зелёный индикатор выполнения и подробное состояние процесса;
 - быстрый перехват stdout и stderr с ограниченной историей консоли;
+- настройка объёма истории, сохраняемой в каждой консоли;
+- поиск в активной консоли по Ctrl+F и переход между совпадениями по F3 либо
+  Shift+F3;
+- фиксация и продолжение автоматической прокрутки по Scroll Lock;
+- автоматическая или ручная запись каждой консоли в отдельный UTF-8-журнал с
+  паузой, продолжением, остановкой и ограничением размера файла;
 - отдельная соседняя вкладка для каждого управляемого экземпляра процесса;
 - остановка всего дерева процессов через Windows Job Objects;
 - остановка всех управляемых скриптов при явном выходе из Cmds Manager;
@@ -509,9 +552,10 @@ start "Дочерний" /D "%ROOT_DIR%" cmd /k "%ROOT_DIR%child.cmd"
 CALL и обычные внутрипроцессные команды остаются в родительской вкладке,
 поскольку используют родительский интерпретатор и его потоки вывода.
 
-Щёлкните вкладку или консоль правой кнопкой мыши, чтобы открыть команды
-копирования, сохранения, выбора шрифта, кодировки, Word Wrap, отделения вкладки,
-полноэкранного режима, разворачивания области, очистки и закрытия/остановки.
+Щёлкните вкладку или консоль правой кнопкой мыши, чтобы открыть команды поиска,
+Scroll Lock, записи журнала, копирования, сохранения, выбора шрифта, кодировки,
+Word Wrap, отделения вкладки, полноэкранного режима, разворачивания области,
+очистки и закрытия/остановки.
 
 
 6. КОДИРОВКА ВЫВОДА
@@ -528,10 +572,18 @@ OutputEncoding=Auto сначала проверяет каждую перехв�
 7. ЖУРНАЛЫ И КОНФИДЕНЦИАЛЬНОСТЬ
 -------------------------------
 
-Журналы событий приложения хранятся в папке logs рядом с EXE. Перехваченный
-вывод скриптов показывается в приложении, но не записывается в журнал, пока не
-включён параметр LogScriptOutput=true. Вывод может содержать пароли, токены,
-персональные данные и другие секреты. Включайте его журналирование только при
+Журналы событий приложения хранятся в папке logs рядом с EXE. Если
+ConsoleAutoRecord=true, каждая новая перехватываемая консоль записывается в
+отдельный UTF-8-файл в папке logs\console. Запись также можно включить вручную
+из контекстного меню: в файл сначала попадёт видимый буфер, затем новый вывод.
+Запись можно поставить на паузу, продолжить или остановить, не останавливая
+процесс и показ его вывода. ConsoleLogMaxSizeMb задаёт жёсткий предел одного
+файла. Файлы старше LogRetentionDays удаляются при начале записи консоли.
+
+LogScriptOutput=true дополнительно записывает перехваченные stdout/stderr в
+журнал событий приложения. Эта функция не зависит от отдельной записи консоли
+и может дублировать вывод. Вывод может содержать пароли, токены, персональные
+данные и другие секреты. Включайте любой вид журналирования только при
 необходимости.
 
 Cmds Manager самостоятельно не добавляет аргументы скриптов в журнал событий.
@@ -560,6 +612,13 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 -----------------
 
 История составлена по Git-коммитам приложения.
+
+1.1.0 — 18.08.2026
+- Добавлена настройка размера отображаемого буфера консоли;
+- добавлена отдельная UTF-8-запись каждой консоли с автоматическим запуском,
+  паузой/продолжением, остановкой, сроком хранения и жёстким лимитом файла;
+- добавлен поиск Ctrl+F с переходом вперёд/назад и учётом регистра;
+- добавлен Scroll Lock для фиксации позиции просмотра.
 
 1.0.0 — 17.08.2026
 - В окно «О программе» добавлены строка Built on с датой и временем сборки,
@@ -626,8 +685,8 @@ INI хранится рядом с CmdsManager.exe в UTF-8. Логически�
 [Application]
 
 ConfigVersion
-  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 8.
-  Не уменьшайте её вручную. Конфигурации версий 1–7 мигрируют в версию 8.
+  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 9.
+  Не уменьшайте её вручную. Конфигурации версий 1–8 мигрируют в версию 9.
 
 Theme
   Тема оболочки: System, Light или Dark. По умолчанию: System.
@@ -680,7 +739,8 @@ LogLevel
   Information, Warning и Error. По умолчанию: Information.
 
 LogRetentionDays
-  Возраст удаления файлов CmdsManager-YYYYMMDD.log при запуске.
+  Возраст удаления файлов журналов событий и консолей. Журналы событий
+  очищаются при запуске приложения, журналы консолей — при начале записи.
   Допустимо: 1–3650 дней. По умолчанию: 14.
 
 LogScriptOutput
@@ -695,6 +755,20 @@ ConsoleFontSize
 ConsolePaneHeight
   Сохранённая высота нижней области консолей в пикселях: 100–4000.
   По умолчанию: 235.
+
+ConsoleBufferSizeKb
+  Максимальный объём отображаемой истории каждой консоли в КиБ. При превышении
+  самая старая часть удаляется так, чтобы осталось около 75 процентов заданного
+  объёма. Допустимо: 64–1048576. По умолчанию: 256.
+
+ConsoleAutoRecord
+  true автоматически запускает отдельный UTF-8-журнал для каждой новой
+  перехватываемой консоли. Файлы хранятся в logs\console. По умолчанию: false.
+
+ConsoleLogMaxSizeMb
+  Жёсткий предел размера одного отдельного журнала консоли в МиБ. При достижении
+  предела запись этой консоли прекращается. Допустимо: 1–4096.
+  По умолчанию: 50.
 
 ConsoleForegroundColor
   Цвет текста консоли в формате #RRGGBB. По умолчанию: #DCDCDC.

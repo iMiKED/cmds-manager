@@ -32,7 +32,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 8;
+        private const int CurrentVersion = 9;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -166,6 +166,9 @@ namespace CmdsManager.Infrastructure.Configuration
             app.ConsoleFontName = ini.Get("Application", "ConsoleFontName", app.ConsoleFontName);
             app.ConsoleFontSize = ReadFloat(ini, "Application", "ConsoleFontSize", app.ConsoleFontSize, 6f, 48f);
             app.ConsolePaneHeight = ReadInt(ini, "Application", "ConsolePaneHeight", app.ConsolePaneHeight, 100, 4000);
+            app.ConsoleBufferSizeKb = ReadInt(ini, "Application", "ConsoleBufferSizeKb", app.ConsoleBufferSizeKb, 64, 1048576);
+            app.ConsoleAutoRecord = ReadBool(ini, "Application", "ConsoleAutoRecord", false);
+            app.ConsoleLogMaxSizeMb = ReadInt(ini, "Application", "ConsoleLogMaxSizeMb", app.ConsoleLogMaxSizeMb, 1, 4096);
             app.ConsoleForegroundColor = ini.Get("Application", "ConsoleForegroundColor", app.ConsoleForegroundColor);
             app.ConsoleBackgroundColor = ini.Get("Application", "ConsoleBackgroundColor", app.ConsoleBackgroundColor);
             app.ConsoleBackgroundOpacity = ReadInt(ini, "Application", "ConsoleBackgroundOpacity", app.ConsoleBackgroundOpacity, 0, 100);
@@ -260,6 +263,9 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set("Application", "ConsoleFontName", app.ConsoleFontName ?? "Consolas");
             ini.Set("Application", "ConsoleFontSize", app.ConsoleFontSize.ToString("0.##", CultureInfo.InvariantCulture));
             ini.Set("Application", "ConsolePaneHeight", app.ConsolePaneHeight);
+            ini.Set("Application", "ConsoleBufferSizeKb", app.ConsoleBufferSizeKb);
+            ini.Set("Application", "ConsoleAutoRecord", Bool(app.ConsoleAutoRecord));
+            ini.Set("Application", "ConsoleLogMaxSizeMb", app.ConsoleLogMaxSizeMb);
             ini.Set("Application", "ConsoleForegroundColor", app.ConsoleForegroundColor ?? "#DCDCDC");
             ini.Set("Application", "ConsoleBackgroundColor", app.ConsoleBackgroundColor ?? "#1C1C1C");
             ini.Set("Application", "ConsoleBackgroundOpacity", app.ConsoleBackgroundOpacity);
@@ -351,6 +357,16 @@ namespace CmdsManager.Infrastructure.Configuration
             if (configuration.Application.ConsolePaneHeight < 100 || configuration.Application.ConsolePaneHeight > 4000)
             {
                 throw new ConfigurationValidationException("Application", "ConsolePaneHeight", "value from 100 to 4000 is required");
+            }
+
+            if (configuration.Application.ConsoleBufferSizeKb < 64 || configuration.Application.ConsoleBufferSizeKb > 1048576)
+            {
+                throw new ConfigurationValidationException("Application", "ConsoleBufferSizeKb", "value from 64 to 1048576 is required");
+            }
+
+            if (configuration.Application.ConsoleLogMaxSizeMb < 1 || configuration.Application.ConsoleLogMaxSizeMb > 4096)
+            {
+                throw new ConfigurationValidationException("Application", "ConsoleLogMaxSizeMb", "value from 1 to 4096 is required");
             }
 
             if (configuration.Application.MainWindowX < -100000 || configuration.Application.MainWindowX > 100000 ||

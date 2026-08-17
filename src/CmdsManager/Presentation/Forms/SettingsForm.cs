@@ -18,6 +18,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly CheckBox _autoStartScripts = new FluentCheckBox();
         private readonly CheckBox _confirmDelete = new FluentCheckBox();
         private readonly CheckBox _logScriptOutput = new FluentCheckBox();
+        private readonly CheckBox _consoleAutoRecord = new FluentCheckBox();
         private readonly FluentTextBox _editorPath = new FluentTextBox();
         private readonly FluentTextBox _editorArguments = new FluentTextBox();
         private readonly FluentTextBox _powerShell7Path = new FluentTextBox();
@@ -26,6 +27,22 @@ namespace CmdsManager.Presentation.Forms
             Minimum = 1,
             Maximum = 3650,
             Width = 72,
+            TextAlign = HorizontalAlignment.Right
+        };
+        private readonly FluentNumericUpDown _consoleBufferSize = new FluentNumericUpDown
+        {
+            Minimum = 64,
+            Maximum = 1048576,
+            Width = 92,
+            ThousandsSeparator = true,
+            TextAlign = HorizontalAlignment.Right
+        };
+        private readonly FluentNumericUpDown _consoleLogMaxSize = new FluentNumericUpDown
+        {
+            Minimum = 1,
+            Maximum = 4096,
+            Width = 76,
+            ThousandsSeparator = true,
             TextAlign = HorizontalAlignment.Right
         };
         private readonly ComboBox _language = new FluentComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -62,6 +79,7 @@ namespace CmdsManager.Presentation.Forms
             _autoStartScripts.Text = _text["Settings.AutoStartScripts"];
             _confirmDelete.Text = _text["Settings.ConfirmDelete"];
             _logScriptOutput.Text = _text["Settings.LogOutput"];
+            _consoleAutoRecord.Text = _text["Settings.ConsoleAutoRecord"];
             foreach (var code in localization.Languages.Keys.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
                 _language.Items.Add(new DisplayItem<string>(code, _text.GetForLanguage(code, "Language.Name")));
             _theme.Items.Add(new DisplayItem<ApplicationTheme>(ApplicationTheme.System, _text["Theme.System"]));
@@ -84,6 +102,12 @@ namespace CmdsManager.Presentation.Forms
             AddRow(tools, _text["Settings.Retention"], _retention);
             AddFullRow(tools, _logScriptOutput);
 
+            var console = CreateTable(190);
+            AddRow(console, _text["Settings.ConsoleBufferSize"], _consoleBufferSize);
+            AddRow(console, _text["Settings.ConsoleLogMaxSize"], _consoleLogMaxSize);
+            AddFullRow(console, _consoleAutoRecord);
+            AddFiller(console);
+
             SetColor(_consoleTextColor, ConsoleAppearance.ParseColor(source.ConsoleForegroundColor, Color.Gainsboro));
             SetColor(_consoleBackgroundColor, ConsoleAppearance.ParseColor(source.ConsoleBackgroundColor, Color.FromArgb(28, 28, 28)));
             SetColor(_tabTextColor, ConsoleAppearance.ParseColor(source.ConsoleTabForegroundColor, Color.FromArgb(38, 43, 50)));
@@ -105,6 +129,7 @@ namespace CmdsManager.Presentation.Forms
 
             var tabs = new FluentTabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(Page(_text["Settings.Tab.General"], general));
+            tabs.TabPages.Add(Page(_text["Settings.Tab.Console"], console));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Appearance"], appearance));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Tools"], tools));
             var save = FluentDialogButtons.Primary(_text["Common.Save"]);
@@ -127,6 +152,11 @@ namespace CmdsManager.Presentation.Forms
             _powerShell7Path.Text = powerShell7Path ?? string.Empty;
             _retention.Value = Math.Min(_retention.Maximum, Math.Max(_retention.Minimum, source.LogRetentionDays));
             _logScriptOutput.Checked = source.LogScriptOutput;
+            _consoleBufferSize.Value = Math.Min(_consoleBufferSize.Maximum,
+                Math.Max(_consoleBufferSize.Minimum, source.ConsoleBufferSizeKb));
+            _consoleLogMaxSize.Value = Math.Min(_consoleLogMaxSize.Maximum,
+                Math.Max(_consoleLogMaxSize.Minimum, source.ConsoleLogMaxSizeMb));
+            _consoleAutoRecord.Checked = source.ConsoleAutoRecord;
             _fontName = source.ConsoleFontName;
             _fontSize = source.ConsoleFontSize;
             UpdateFontDisplay();
@@ -165,6 +195,9 @@ namespace CmdsManager.Presentation.Forms
                 SettingsResult.EditorArguments = _editorArguments.Text.Trim();
                 SettingsResult.LogRetentionDays = decimal.ToInt32(_retention.Value);
                 SettingsResult.LogScriptOutput = _logScriptOutput.Checked;
+                SettingsResult.ConsoleBufferSizeKb = decimal.ToInt32(_consoleBufferSize.Value);
+                SettingsResult.ConsoleLogMaxSizeMb = decimal.ToInt32(_consoleLogMaxSize.Value);
+                SettingsResult.ConsoleAutoRecord = _consoleAutoRecord.Checked;
                 SettingsResult.Theme = GetValue(_theme, ApplicationTheme.System);
                 SettingsResult.ConsoleFontName = _fontName;
                 SettingsResult.ConsoleFontSize = _fontSize;
