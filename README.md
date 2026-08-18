@@ -19,7 +19,7 @@ maintained by [iMiKED from 4PDA](https://4pda.to/forum/index.php?showuser=101794
 Cmds Manager is a lightweight Windows tray application for organizing, running,
 monitoring, and stopping local automation scripts. It keeps a searchable script
 catalog in a portable INI file and presents captured output in a modern tabbed
-console workspace.
+console workspace. The current source version is 1.1.0.
 
 The application is built with C# and Windows Forms for .NET Framework 4.8. The
 release contains one production executable and does not bundle PowerShell, .NET,
@@ -65,8 +65,14 @@ If you like Cmds Manager or it saves you time, you can support the author:
 
 - Capture stdout and stderr in a dedicated tab for every managed launch
 - Batch UI updates for responsive high-volume output
+- Configure the displayed history buffer size for every console
 - Decode UTF-8, Windows-1251, OEM Windows, UTF-16 LE, or mixed output in Auto mode
 - Re-decode already captured bytes after changing a tab's encoding
+- Search the active console with `Ctrl+F`; use `F3` and `Shift+F3` for the next
+  or previous match
+- Freeze and resume automatic scrolling with `Scroll Lock`
+- Record each console to a dedicated UTF-8 file automatically or on demand;
+  pause, resume, stop, and enforce a hard per-file size limit
 - Configure the font, text color, background color, tab colors, and opacity
 - Store Word Wrap separately for every script and its managed child tabs
 - Copy selected text or save the selection/full console buffer to a file
@@ -81,6 +87,8 @@ If you like Cmds Manager or it saves you time, you can support the author:
 - Close the main window to the tray or exit explicitly
 - Start Cmds Manager with Windows for the current user
 - Save main-window position, size, maximized state, and console-pane height
+- Recover the main window automatically if Windows leaves it at an invisible
+  minimized sentinel position or a saved monitor is no longer available
 - Choose System, Light, or Dark Fluent Compact themes
 - Use English or Russian interface strings stored in the INI file
 - View version, build time, author, license, website, and donation links in About
@@ -139,7 +147,7 @@ paths are resolved from this directory and Windows environment variables such as
 
 | INI section | Purpose |
 | --- | --- |
-| `[Application]` | Theme, tray behavior, auto-start, editor, logs, window geometry, console appearance |
+| `[Application]` | Theme, tray behavior, auto-start, editor, logs, window geometry, console behavior and appearance |
 | `[Defaults]` | Initial launch profile for newly added scripts |
 | `[PowerShell]` | Optional path to `pwsh.exe` |
 | `[Localization]` | Active language |
@@ -152,9 +160,13 @@ every INI setting are available in [Readme.txt](Readme.txt).
 ## Logs and privacy
 
 Application event logs are written to the `logs` directory beside the executable.
-Captured script output is not stored in logs unless `LogScriptOutput=true` is
-enabled. Script output can contain tokens, passwords, paths, or personal data, so
-output logging should only be enabled when required.
+Dedicated console recordings are UTF-8 files under `logs\console`; they can be
+started manually or for every new console with `ConsoleAutoRecord=true`, paused,
+resumed, and stopped without affecting the process. `ConsoleLogMaxSizeMb` limits
+each recording. `LogScriptOutput=true` separately copies captured stdout/stderr
+into the application event log and can therefore duplicate output. Script output
+can contain tokens, passwords, paths, or personal data, so logging should only be
+enabled when required.
 
 ## Build and test
 
@@ -180,11 +192,10 @@ To compile and package without running tests:
 For release validation, the expected tag can be supplied explicitly:
 
 ```powershell
-.\build.ps1 -ExpectedVersion 1.0.0
+.\build.ps1 -ExpectedVersion 1.1.0
 ```
 
 The command fails when the tag and `AssemblyInformationalVersion` differ.
-
 
 ## Portable package contents
 

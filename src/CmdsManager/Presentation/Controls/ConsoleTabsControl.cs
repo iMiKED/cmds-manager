@@ -11,6 +11,8 @@ using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Execution;
+using CmdsManager.Infrastructure.Logging;
+using CmdsManager.Infrastructure.Windows;
 using CmdsManager.Presentation.Forms;
 using CmdsManager.Presentation.Theming;
 
@@ -30,8 +32,6 @@ namespace CmdsManager.Presentation.Controls
 
     public sealed class ConsoleTabsControl : UserControl
     {
-        private const int MaxCharactersPerTab = 200000;
-        private const int TrimToCharacters = 150000;
         private const int MaxEventsPerTick = 50000;
         private static readonly Color DefaultConsoleBackground = Color.FromArgb(28, 28, 28);
 
@@ -67,15 +67,21 @@ namespace CmdsManager.Presentation.Controls
             internal Queue<ConsoleHistoryLine> History { get; } = new Queue<ConsoleHistoryLine>();
             internal int HistoryUnits { get; set; }
             internal bool WordWrap { get; set; }
+            internal bool ScrollLock { get; set; }
             internal Font CustomFont { get; set; }
             internal RichTextBox Output { get; set; }
             internal DetachedConsoleForm DetachedWindow { get; set; }
+            internal ConsoleFindForm FindWindow { get; set; }
+            internal ConsoleLogRecorder Recorder { get; set; }
+            internal bool RecordingFailed { get; set; }
+            internal bool AutomaticRecordingSuppressed { get; set; }
             internal bool ReturnToMainAfterFullScreen { get; set; }
         }
 
         private readonly LocalizationService _text;
         private readonly Func<ApplicationSettings> _settings;
         private readonly Func<Guid, bool> _wordWrapForScript;
+        private readonly string _consoleLogDirectory;
         private readonly ConcurrentQueue<ConsoleEvent> _events = new ConcurrentQueue<ConsoleEvent>();
         private readonly Dictionary<int, ConsoleSession> _sessions = new Dictionary<int, ConsoleSession>();
         private readonly HashSet<int> _suppressedProcesses = new HashSet<int>();
@@ -112,11 +118,17 @@ namespace CmdsManager.Presentation.Controls
         private readonly Timer _flushTimer = new Timer { Interval = 50 };
         private readonly ContextMenuStrip _menu = new ContextMenuStrip();
         private readonly ToolStripMenuItem _copyItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _findItem = new ToolStripMenuItem { ShortcutKeyDisplayString = "Ctrl+F" };
         private readonly ToolStripMenuItem _saveSelectionItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _saveAllItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _fontItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _encodingItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _wordWrapItem = new ToolStripMenuItem { CheckOnClick = false };
+        private readonly ToolStripMenuItem _scrollLockItem = new ToolStripMenuItem
+            { CheckOnClick = false, ShortcutKeyDisplayString = "Scroll Lock" };
+        private readonly ToolStripMenuItem _startRecordingItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _pauseRecordingItem = new ToolStripMenuItem();
+        private readonly ToolStripMenuItem _stopRecordingItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _detachItem = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _fullScreenItem = new ToolStripMenuItem { ShortcutKeyDisplayString = "F11" };
         private readonly ToolStripMenuItem _maximizePaneItem = new ToolStripMenuItem();
@@ -131,11 +143,14 @@ namespace CmdsManager.Presentation.Controls
         private ApplicationTheme _applicationTheme = ApplicationTheme.System;
 
         public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings,
-            Func<Guid, bool> wordWrapForScript = null)
+            Func<Guid, bool> wordWrapForScript = null, string consoleLogDirectory = null)
         {
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _wordWrapForScript = wordWrapForScript ?? (scriptId => false);
+            _consoleLogDirectory = Path.GetFullPath(string.IsNullOrWhiteSpace(consoleLogDirectory)
+                ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "console")
+                : consoleLogDirectory);
 
             Tag = AppThemeManager.PreserveColorsTag;
             BackColor = DefaultConsoleBackground;
@@ -147,12 +162,18 @@ namespace CmdsManager.Presentation.Controls
             _menu.Items.AddRange(new ToolStripItem[]
             {
                 _copyItem,
+                _findItem,
                 _saveSelectionItem,
                 _saveAllItem,
                 new ToolStripSeparator(),
                 _fontItem,
                 _encodingItem,
                 _wordWrapItem,
+                _scrollLockItem,
+                new ToolStripSeparator(),
+                _startRecordingItem,
+                _pauseRecordingItem,
+                _stopRecordingItem,
                 new ToolStripSeparator(),
                 _detachItem,
                 _fullScreenItem,
@@ -163,10 +184,15 @@ namespace CmdsManager.Presentation.Controls
             });
             _menu.Opening += PrepareContextMenu;
             _copyItem.Click += (sender, args) => CopySelection();
+            _findItem.Click += (sender, args) => ShowFind(MenuSession);
             _saveSelectionItem.Click += (sender, args) => SaveConsoleText(true);
             _saveAllItem.Click += (sender, args) => SaveConsoleText(false);
             _fontItem.Click += (sender, args) => ChooseFont();
             _wordWrapItem.Click += (sender, args) => ToggleWordWrap();
+            _scrollLockItem.Click += (sender, args) => ToggleScrollLock(MenuSession);
+            _startRecordingItem.Click += (sender, args) => StartRecording(MenuSession, true, true);
+            _pauseRecordingItem.Click += (sender, args) => ToggleRecordingPause(MenuSession);
+            _stopRecordingItem.Click += (sender, args) => StopRecording(MenuSession, true, true, true);
             _detachItem.Click += (sender, args) => ToggleDetached();
             _fullScreenItem.Click += (sender, args) => ToggleFullScreen();
             _maximizePaneItem.Click += (sender, args) => PaneMaximizeRequested?.Invoke(this, EventArgs.Empty);
@@ -216,6 +242,8 @@ namespace CmdsManager.Presentation.Controls
             {
                 if (session.DetachedWindow != null)
                     session.DetachedWindow.ApplyApplicationTheme(theme);
+                if (session.FindWindow != null)
+                    session.FindWindow.ApplyApplicationTheme(theme);
             }
         }
 
@@ -301,6 +329,7 @@ namespace CmdsManager.Presentation.Controls
                 session.Output.ForeColor = foreground;
                 session.Output.BackColor = background;
                 if (session.DetachedWindow != null) session.DetachedWindow.BackColor = background;
+                if (TrimHistory(session, BufferUnits(settings))) RenderSession(session);
             }
 
             var previous = _consoleFont;
@@ -356,6 +385,14 @@ namespace CmdsManager.Presentation.Controls
                 _flushTimer.Dispose();
                 foreach (var session in _sessions.Values)
                 {
+                    if (session.FindWindow != null)
+                    {
+                        session.FindWindow.Close();
+                        session.FindWindow.Dispose();
+                        session.FindWindow = null;
+                    }
+                    session.Recorder?.Dispose();
+                    session.Recorder = null;
                     if (session.DetachedWindow != null)
                     {
                         session.DetachedWindow.ReleaseContent();
@@ -376,7 +413,10 @@ namespace CmdsManager.Presentation.Controls
             if (IsDisposed) return;
 
             var batches = new Dictionary<int, StringBuilder>();
+            var recordingBatches = new Dictionary<int, StringBuilder>();
             var redraw = new HashSet<int>();
+            var exitedRecordings = new HashSet<int>();
+            var bufferUnits = BufferUnits(_settings() ?? new ApplicationSettings());
             var processed = 0;
             ConsoleEvent item;
             while (processed < MaxEventsPerTick && _events.TryDequeue(out item))
@@ -398,6 +438,7 @@ namespace CmdsManager.Presentation.Controls
                     {
                         exited.ExitCode = item.Instance.ExitCode;
                         UpdateTabTitle(exited);
+                        exitedRecordings.Add(exited.ProcessId);
                     }
                     continue;
                 }
@@ -411,9 +452,21 @@ namespace CmdsManager.Presentation.Controls
                     OriginalText = item.Output.Line,
                     IsError = item.Output.IsError
                 };
+                var decodedLine = DecodeLine(session, historyLine);
                 session.History.Enqueue(historyLine);
                 session.HistoryUnits += HistoryUnits(historyLine);
-                if (TrimHistory(session)) redraw.Add(session.ProcessId);
+                if (TrimHistory(session, bufferUnits)) redraw.Add(session.ProcessId);
+
+                if (session.Recorder != null && session.Recorder.State == ConsoleRecordingState.Recording)
+                {
+                    StringBuilder recordingBuilder;
+                    if (!recordingBatches.TryGetValue(item.Output.ProcessId, out recordingBuilder))
+                    {
+                        recordingBuilder = new StringBuilder();
+                        recordingBatches[item.Output.ProcessId] = recordingBuilder;
+                    }
+                    recordingBuilder.AppendLine(decodedLine);
+                }
 
                 if (redraw.Contains(session.ProcessId)) continue;
                 StringBuilder builder;
@@ -422,7 +475,7 @@ namespace CmdsManager.Presentation.Controls
                     builder = new StringBuilder();
                     batches[item.Output.ProcessId] = builder;
                 }
-                builder.AppendLine(DecodeLine(session, historyLine));
+                builder.AppendLine(decodedLine);
             }
 
             foreach (var processId in redraw)
@@ -434,7 +487,18 @@ namespace CmdsManager.Presentation.Controls
             {
                 if (redraw.Contains(batch.Key)) continue;
                 ConsoleSession session;
-                if (_sessions.TryGetValue(batch.Key, out session)) AppendBatch(session.Output, batch.Value.ToString());
+                if (_sessions.TryGetValue(batch.Key, out session)) AppendBatch(session, batch.Value.ToString());
+            }
+            foreach (var batch in recordingBatches)
+            {
+                ConsoleSession session;
+                if (!_sessions.TryGetValue(batch.Key, out session) || session.Recorder == null) continue;
+                if (!session.Recorder.Write(batch.Value.ToString())) UpdateTabTitle(session);
+            }
+            foreach (var processId in exitedRecordings)
+            {
+                ConsoleSession session;
+                if (_sessions.TryGetValue(processId, out session)) StopRecording(session, true);
             }
 
             UpdateEmptyState();
@@ -454,6 +518,7 @@ namespace CmdsManager.Presentation.Controls
                     UpdateTabTitle(existing);
                     if (existing.History.Count > 0) RenderSession(existing);
                 }
+                TryStartAutomaticRecording(existing);
                 return existing;
             }
 
@@ -474,6 +539,7 @@ namespace CmdsManager.Presentation.Controls
                 Tag = processId,
                 Visible = false
             };
+            output.KeyDown += HandleOutputKeyDown;
             var session = new ConsoleSession
             {
                 ScriptId = scriptId,
@@ -488,6 +554,7 @@ namespace CmdsManager.Presentation.Controls
             _contentHost.Controls.Add(output);
             _tabStrip.AddTab(processId, string.Empty, string.Empty, true);
             UpdateTabTitle(session);
+            TryStartAutomaticRecording(session);
             return session;
         }
 
@@ -496,10 +563,18 @@ namespace CmdsManager.Presentation.Controls
             return (line.RawBytes == null ? (line.OriginalText ?? string.Empty).Length : line.RawBytes.Length) + 2;
         }
 
-        private static bool TrimHistory(ConsoleSession session)
+        private static int BufferUnits(ApplicationSettings settings)
         {
-            if (session.HistoryUnits <= MaxCharactersPerTab) return false;
-            while (session.History.Count > 1 && session.HistoryUnits > TrimToCharacters)
+            var kilobytes = Math.Max(64, Math.Min(1048576,
+                settings?.ConsoleBufferSizeKb ?? new ApplicationSettings().ConsoleBufferSizeKb));
+            return checked(kilobytes * 1024);
+        }
+
+        private static bool TrimHistory(ConsoleSession session, int maximumUnits)
+        {
+            if (session.HistoryUnits <= maximumUnits) return false;
+            var trimToUnits = Math.Max(1, maximumUnits * 3 / 4);
+            while (session.History.Count > 1 && session.HistoryUnits > trimToUnits)
             {
                 var removed = session.History.Dequeue();
                 session.HistoryUnits -= HistoryUnits(removed);
@@ -514,30 +589,70 @@ namespace CmdsManager.Presentation.Controls
                 : OutputEncodingDecoder.Decode(line.RawBytes, session.OutputEncoding);
         }
 
-        private static void RenderSession(ConsoleSession session)
+        private void RenderSession(ConsoleSession session)
         {
-            var builder = new StringBuilder(Math.Min(MaxCharactersPerTab, session.HistoryUnits));
+            var maximumUnits = BufferUnits(_settings() ?? new ApplicationSettings());
+            var output = session.Output;
+            var preserveScroll = session.ScrollLock && output.IsHandleCreated;
+            var firstVisibleLine = preserveScroll ? FirstVisibleLine(output) : 0;
+            var selectionStart = output.SelectionStart;
+            var selectionLength = output.SelectionLength;
+            var builder = new StringBuilder(Math.Min(maximumUnits, Math.Max(0, session.HistoryUnits)));
             foreach (var line in session.History) builder.AppendLine(DecodeLine(session, line));
             var text = builder.ToString();
-            if (text.Length > MaxCharactersPerTab)
-                text = text.Substring(text.Length - TrimToCharacters);
-            session.Output.Text = text;
-            session.Output.SelectionStart = session.Output.TextLength;
-            session.Output.SelectionLength = 0;
-            session.Output.ScrollToCaret();
-        }
-
-        private static void AppendBatch(RichTextBox output, string text)
-        {
-            if (text.Length == 0) return;
-            var wasAtEnd = output.SelectionStart >= output.TextLength - 1;
-            output.AppendText(text);
-            if (wasAtEnd)
+            if (text.Length > maximumUnits)
+                text = text.Substring(text.Length - Math.Max(1, maximumUnits * 3 / 4));
+            output.Text = text;
+            if (preserveScroll) RestoreScroll(output, firstVisibleLine, selectionStart, selectionLength);
+            else
             {
                 output.SelectionStart = output.TextLength;
                 output.SelectionLength = 0;
                 output.ScrollToCaret();
             }
+        }
+
+        private static void AppendBatch(ConsoleSession session, string text)
+        {
+            if (text.Length == 0) return;
+            var output = session.Output;
+            var wasAtEnd = output.SelectionStart >= output.TextLength - 1;
+            var preserveScroll = session.ScrollLock && output.IsHandleCreated;
+            var firstVisibleLine = preserveScroll ? FirstVisibleLine(output) : 0;
+            var selectionStart = output.SelectionStart;
+            var selectionLength = output.SelectionLength;
+            output.AppendText(text);
+            if (preserveScroll)
+            {
+                RestoreScroll(output, firstVisibleLine, selectionStart, selectionLength);
+            }
+            else if (wasAtEnd)
+            {
+                output.SelectionStart = output.TextLength;
+                output.SelectionLength = 0;
+                output.ScrollToCaret();
+            }
+        }
+
+        private static int FirstVisibleLine(RichTextBox output)
+        {
+            return output == null || !output.IsHandleCreated ? 0 :
+                NativeMethods.SendMessage(output.Handle, NativeMethods.EmGetFirstVisibleLine,
+                    IntPtr.Zero, IntPtr.Zero).ToInt32();
+        }
+
+        private static void RestoreScroll(RichTextBox output, int firstVisibleLine,
+            int selectionStart, int selectionLength)
+        {
+            if (output == null || !output.IsHandleCreated) return;
+            output.SelectionStart = Math.Max(0, Math.Min(selectionStart, output.TextLength));
+            output.SelectionLength = Math.Max(0,
+                Math.Min(selectionLength, output.TextLength - output.SelectionStart));
+            var currentLine = FirstVisibleLine(output);
+            var difference = firstVisibleLine - currentLine;
+            if (difference != 0)
+                NativeMethods.SendMessage(output.Handle, NativeMethods.EmLineScroll,
+                    IntPtr.Zero, new IntPtr(difference));
         }
 
         private void AddEncodingItem(ScriptOutputEncoding encoding)
@@ -559,10 +674,22 @@ namespace CmdsManager.Presentation.Controls
             }
 
             _copyItem.Enabled = session.Output.SelectionLength > 0;
+            _findItem.Enabled = session.Output.TextLength > 0;
             _saveSelectionItem.Enabled = session.Output.SelectionLength > 0;
             _saveAllItem.Enabled = session.Output.TextLength > 0;
             _clearItem.Enabled = session.Output.TextLength > 0;
             _wordWrapItem.Checked = session.WordWrap;
+            _scrollLockItem.Checked = session.ScrollLock;
+            var recordingState = session.Recorder?.State ?? ConsoleRecordingState.Stopped;
+            _startRecordingItem.Enabled = !session.ExitCode.HasValue &&
+                (recordingState == ConsoleRecordingState.Stopped ||
+                    recordingState == ConsoleRecordingState.LimitReached);
+            _pauseRecordingItem.Enabled = recordingState == ConsoleRecordingState.Recording ||
+                recordingState == ConsoleRecordingState.Paused;
+            _pauseRecordingItem.Text = _text[recordingState == ConsoleRecordingState.Paused
+                ? "Console.ResumeRecording" : "Console.PauseRecording"];
+            _stopRecordingItem.Enabled = recordingState == ConsoleRecordingState.Recording ||
+                recordingState == ConsoleRecordingState.Paused;
             foreach (var pair in _encodingItems) pair.Value.Checked = pair.Key == session.OutputEncoding;
             _detachItem.Text = _text[session.DetachedWindow == null ? "Console.Detach" : "Console.Reattach"];
             _fullScreenItem.Checked = session.DetachedWindow != null && session.DetachedWindow.IsFullScreen;
@@ -667,6 +794,149 @@ namespace CmdsManager.Presentation.Controls
             session.Output.ScrollBars = wordWrap ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
         }
 
+        private void ShowFind(ConsoleSession session)
+        {
+            if (session == null) return;
+            FlushPendingOutput();
+            if (session.FindWindow == null || session.FindWindow.IsDisposed)
+            {
+                var window = new ConsoleFindForm(_text, session.Output, _applicationTheme);
+                session.FindWindow = window;
+                window.FormClosed += (sender, args) =>
+                {
+                    if (ReferenceEquals(session.FindWindow, window)) session.FindWindow = null;
+                };
+                if (session.Output.SelectionLength > 0)
+                    window.SearchText = session.Output.SelectedText.Replace("\r", string.Empty).Replace("\n", string.Empty);
+            }
+
+            var owner = session.Output.FindForm();
+            if (!session.FindWindow.Visible)
+            {
+                if (owner == null) session.FindWindow.Show();
+                else session.FindWindow.Show(owner);
+            }
+            else session.FindWindow.Activate();
+        }
+
+        private void ToggleScrollLock(ConsoleSession session)
+        {
+            if (session == null) return;
+            session.ScrollLock = !session.ScrollLock;
+            if (!session.ScrollLock)
+            {
+                session.Output.SelectionStart = session.Output.TextLength;
+                session.Output.SelectionLength = 0;
+                session.Output.ScrollToCaret();
+            }
+        }
+
+        private void TryStartAutomaticRecording(ConsoleSession session)
+        {
+            var settings = _settings() ?? new ApplicationSettings();
+            if (session == null || session.ExitCode.HasValue || !settings.ConsoleAutoRecord || session.Recorder != null ||
+                session.RecordingFailed || session.AutomaticRecordingSuppressed)
+                return;
+            StartRecording(session, false, false);
+        }
+
+        private void StartRecording(ConsoleSession session, bool includeExistingText, bool showErrors)
+        {
+            if (session == null || session.ExitCode.HasValue) return;
+            if (includeExistingText) FlushPendingOutput();
+            try
+            {
+                session.Recorder?.Dispose();
+                session.Recorder = null;
+                var settings = _settings() ?? new ApplicationSettings();
+                ConsoleLogRecorder.DeleteExpiredLogs(_consoleLogDirectory, settings.LogRetentionDays);
+                session.Recorder = new ConsoleLogRecorder(_consoleLogDirectory, session.ScriptName,
+                    session.ProcessId, DateTime.Now,
+                    checked((long)settings.ConsoleLogMaxSizeMb * 1024L * 1024L));
+                session.RecordingFailed = false;
+                session.AutomaticRecordingSuppressed = false;
+                if (includeExistingText && session.Output.TextLength > 0)
+                    session.Recorder.Write(session.Output.Text);
+                UpdateTabTitle(session);
+            }
+            catch (Exception exception)
+            {
+                session.Recorder?.Dispose();
+                session.Recorder = null;
+                session.RecordingFailed = true;
+                UpdateTabTitle(session);
+                if (showErrors)
+                {
+                    MessageBox.Show(this, exception.Message, _text["Console.RecordFailed"],
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void ToggleRecordingPause(ConsoleSession session)
+        {
+            if (session?.Recorder == null) return;
+            FlushPendingOutput();
+            if (session.Recorder.State == ConsoleRecordingState.Paused) session.Recorder.Resume();
+            else if (session.Recorder.State == ConsoleRecordingState.Recording) session.Recorder.Pause();
+            UpdateTabTitle(session);
+        }
+
+        private void StopRecording(ConsoleSession session, bool updateTitle, bool flushPending = false,
+            bool suppressAutomaticRestart = false)
+        {
+            if (session == null) return;
+            if (flushPending) FlushPendingOutput();
+            session.Recorder?.Dispose();
+            session.Recorder = null;
+            session.RecordingFailed = false;
+            if (suppressAutomaticRestart) session.AutomaticRecordingSuppressed = true;
+            if (updateTitle) UpdateTabTitle(session);
+        }
+
+        private void HandleOutputKeyDown(object sender, KeyEventArgs args)
+        {
+            var session = SessionFromControl(sender as Control);
+            if (session == null) return;
+            if (args.Control && args.KeyCode == Keys.F)
+            {
+                ShowFind(session);
+                args.Handled = true;
+                args.SuppressKeyPress = true;
+                return;
+            }
+            if (args.KeyCode == Keys.Scroll)
+            {
+                ToggleScrollLock(session);
+                args.Handled = true;
+                args.SuppressKeyPress = true;
+                return;
+            }
+            if (args.KeyCode == Keys.F3 && session.FindWindow != null)
+            {
+                if (args.Shift) session.FindWindow.FindPrevious();
+                else session.FindWindow.FindNext();
+                args.Handled = true;
+                args.SuppressKeyPress = true;
+            }
+        }
+
+        protected override bool ProcessCmdKey(ref Message message, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.F) && SelectedSession != null)
+            {
+                ShowFind(SelectedSession);
+                return true;
+            }
+            if ((keyData & Keys.KeyCode) == Keys.Scroll && (keyData & Keys.Modifiers) == Keys.None &&
+                SelectedSession != null)
+            {
+                ToggleScrollLock(SelectedSession);
+                return true;
+            }
+            return base.ProcessCmdKey(ref message, keyData);
+        }
+
         private void ClearSelectedTab()
         {
             var session = MenuSession;
@@ -713,6 +983,8 @@ namespace CmdsManager.Presentation.Controls
                 return;
             }
 
+            CloseFindWindow(session);
+
             _contentHost.Controls.Remove(session.Output);
             _tabStrip.RemoveTab(session.ProcessId);
             session.Output.Visible = true;
@@ -758,6 +1030,8 @@ namespace CmdsManager.Presentation.Controls
         private void CloseSession(ConsoleSession session)
         {
             var isRunning = !session.ExitCode.HasValue;
+            CloseFindWindow(session);
+            StopRecording(session, false);
             _suppressedProcesses.Add(session.ProcessId);
             _sessions.Remove(session.ProcessId);
             if (session.DetachedWindow != null)
@@ -777,6 +1051,15 @@ namespace CmdsManager.Presentation.Controls
             UpdateEmptyState();
             CloseRequested?.Invoke(this,
                 new ConsoleTabCloseRequestedEventArgs(session.ScriptId, session.ProcessId, isRunning));
+        }
+
+        private static void CloseFindWindow(ConsoleSession session)
+        {
+            var window = session?.FindWindow;
+            if (window == null) return;
+            session.FindWindow = null;
+            if (!window.IsDisposed) window.Close();
+            window.Dispose();
         }
 
         private void HandleSelectedTabChanged(object sender, TerminalTabEventArgs args)
@@ -828,11 +1111,16 @@ namespace CmdsManager.Presentation.Controls
         {
             _empty.Text = _text["Console.Empty"];
             _copyItem.Text = _text["Console.CopySelection"];
+            _findItem.Text = _text["Console.Find"];
             _saveSelectionItem.Text = _text["Console.SaveSelection"];
             _saveAllItem.Text = _text["Console.SaveAll"];
             _fontItem.Text = _text["Console.SelectFont"];
             _encodingItem.Text = _text["Console.Encoding"];
             _wordWrapItem.Text = _text["Console.WordWrap"];
+            _scrollLockItem.Text = _text["Console.ScrollLock"];
+            _startRecordingItem.Text = _text["Console.StartRecording"];
+            _pauseRecordingItem.Text = _text["Console.PauseRecording"];
+            _stopRecordingItem.Text = _text["Console.StopRecording"];
             _detachItem.Text = _text["Console.Detach"];
             _fullScreenItem.Text = _text["Console.FullScreen"];
             _maximizePaneItem.Text = _text[PaneMaximized ? "Console.RestorePane" : "Console.MaximizePane"];
@@ -843,7 +1131,11 @@ namespace CmdsManager.Presentation.Controls
             _encodingItems[ScriptOutputEncoding.Windows1251].Text = _text["Script.Encoding.Windows1251"];
             _encodingItems[ScriptOutputEncoding.Oem].Text = _text["Script.Encoding.Oem"];
             _encodingItems[ScriptOutputEncoding.Utf16LittleEndian].Text = _text["Script.Encoding.Utf16"];
-            foreach (var session in _sessions.Values) UpdateTabTitle(session);
+            foreach (var session in _sessions.Values)
+            {
+                session.FindWindow?.ApplyLocalization();
+                UpdateTabTitle(session);
+            }
         }
 
         private void UpdateTabTitle(ConsoleSession session)
@@ -853,6 +1145,8 @@ namespace CmdsManager.Presentation.Controls
             var status = session.ExitCode.HasValue
                 ? _text.Get("Console.Exited", session.ExitCode.Value)
                 : _text["Console.Running"];
+            var recordingStatus = RecordingStatus(session);
+            if (recordingStatus.Length > 0) status += " · " + recordingStatus;
             if (session.DetachedWindow != null)
             {
                 session.DetachedWindow.Text = DetachedWindowTitle(session);
@@ -868,8 +1162,28 @@ namespace CmdsManager.Presentation.Controls
 
         private string DetachedWindowTitle(ConsoleSession session)
         {
-            return _text.Get("Console.DetachedTitle", session.ScriptName ?? string.Empty, session.ProcessId,
+            var result = _text.Get("Console.DetachedTitle", session.ScriptName ?? string.Empty, session.ProcessId,
                 ApplicationResources.WindowTitle);
+            var recordingStatus = RecordingStatus(session);
+            return recordingStatus.Length == 0 ? result : result + " · " + recordingStatus;
+        }
+
+        private string RecordingStatus(ConsoleSession session)
+        {
+            if (session == null) return string.Empty;
+            if (session.RecordingFailed) return _text["Console.RecordingFailed"];
+            if (session.Recorder == null) return string.Empty;
+            switch (session.Recorder.State)
+            {
+                case ConsoleRecordingState.Recording:
+                    return _text["Console.Recording"];
+                case ConsoleRecordingState.Paused:
+                    return _text["Console.RecordingPaused"];
+                case ConsoleRecordingState.LimitReached:
+                    return _text["Console.RecordingLimit"];
+                default:
+                    return string.Empty;
+            }
         }
 
         private void UpdateEmptyState()

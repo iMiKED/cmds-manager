@@ -380,6 +380,12 @@ namespace CmdsManager.Presentation.Theming
 
         internal bool ReadOnly { get { return _editor.ReadOnly; } set { _editor.ReadOnly = value; } }
 
+        internal void SelectAll()
+        {
+            _editor.Focus();
+            _editor.SelectAll();
+        }
+
         public void ApplyPalette(AppThemePalette palette)
         {
             _palette = palette ?? AppThemePalette.Light();
@@ -605,6 +611,7 @@ namespace CmdsManager.Presentation.Theming
         internal decimal Increment { get { return _valueControl.Increment; } set { _valueControl.Increment = value; } }
         internal int DecimalPlaces { get { return _valueControl.DecimalPlaces; } set { _valueControl.DecimalPlaces = value; } }
         internal HorizontalAlignment TextAlign { get { return _valueControl.TextAlign; } set { _valueControl.TextAlign = value; } }
+        internal bool ThousandsSeparator { get { return _valueControl.ThousandsSeparator; } set { _valueControl.ThousandsSeparator = value; } }
 
         public void ApplyPalette(AppThemePalette palette)
         {
