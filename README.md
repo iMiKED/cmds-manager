@@ -84,6 +84,8 @@ If you like Cmds Manager or it saves you time, you can support the author:
 ### Application experience
 
 - Open or hide the main window with one click on the notification-area icon
+- Register a configurable **Show App Hotkey** that globally shows and activates
+  Cmds Manager while it is running
 - Close the main window to the tray or exit explicitly
 - Start Cmds Manager with Windows for the current user
 - Save main-window position, size, maximized state, and console-pane height
@@ -147,7 +149,7 @@ paths are resolved from this directory and Windows environment variables such as
 
 | INI section | Purpose |
 | --- | --- |
-| `[Application]` | Theme, tray behavior, auto-start, editor, logs, window geometry, console behavior and appearance |
+| `[Application]` | Theme, tray behavior, Show App Hotkey, auto-start, editor, logs, window geometry, console behavior and appearance |
 | `[Defaults]` | Initial launch profile for newly added scripts |
 | `[PowerShell]` | Optional path to `pwsh.exe` |
 | `[Localization]` | Active language |

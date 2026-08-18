@@ -100,8 +100,9 @@ namespace CmdsManager
                 var commandBuilder = new ScriptCommandBuilder(configDirectory, WinFormsApplication.ExecutablePath);
                 var editor = new WindowsScriptEditorLauncher(commandBuilder);
                 using (var supervisor = new ProcessSupervisor(commandBuilder, log, () => state.Current.Application.LogScriptOutput))
-                using (var mainForm = new MainForm(state, store, supervisor, editor, startup, log, text))
-                using (var context = new CmdsApplicationContext(mainForm, supervisor, state, log, text, automaticallyStarted))
+                using (var showAppHotkey = new ShowAppHotkeyManager())
+                using (var mainForm = new MainForm(state, store, supervisor, editor, startup, showAppHotkey, log, text))
+                using (var context = new CmdsApplicationContext(mainForm, supervisor, state, log, text, showAppHotkey, automaticallyStarted))
                 {
                     WinFormsApplication.ThreadException += (sender, eventArgs) =>
                     {

@@ -90,6 +90,10 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Settings.Tab.Console", "Консоль"), Pair("Settings.Tab.Tools", "Пути и журналы"),
                 Pair("Settings.StartWithWindows", "Запускать Cmds Manager при входе в Windows"), Pair("Settings.StartMinimized", "При ручном старте скрывать в трей"),
                 Pair("Settings.AutoStartScripts", "Запускать отмеченные скрипты при старте"), Pair("Settings.ConfirmDelete", "Подтверждать удаление записи"),
+                Pair("Settings.ShowAppHotkey", "Хоткей \"Показать приложение\""), Pair("Settings.ShowAppHotkeyClear", "Очистить"),
+                Pair("Settings.ShowAppHotkeyHint", "Установите флажок, затем нажмите сочетание с Ctrl, Alt, Shift или Win."),
+                Pair("Settings.ShowAppHotkeyRequired", "Нажмите сочетание с Ctrl, Alt, Shift или Win для хоткея \"Показать приложение\"."),
+                Pair("Settings.ShowAppHotkeyUnavailable", "Хоткей «{0}» уже используется другим приложением или зарезервирован Windows."),
                 Pair("Settings.Language", "Язык"), Pair("Settings.Theme", "Тема"), Pair("Theme.System", "Системная"),
                 Pair("Theme.Light", "Светлая"), Pair("Theme.Dark", "Тёмная"),
                 Pair("Settings.ConsoleFont", "Шрифт консоли"), Pair("Settings.ChooseFont", "Выбрать…"),
@@ -109,6 +113,7 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("About.Build", "Собрано: {0}"), Pair("About.Author", "Автор:"), Pair("About.License", "Лицензия:"),
                 Pair("About.Website", "Посетить сайт:"), Pair("About.Donate", "Поддержать"),
                 Pair("Tray.Toggle", "Открыть / скрыть"), Pair("Tray.AutoStartFailed", "Не удалось автоматически запустить скриптов: {0}. Откройте приложение для подробностей."),
+                Pair("Tray.ShowAppHotkeyFailed", "Не удалось зарегистрировать хоткей «{0}». Измените его в настройках."),
                 Pair("Tray.ExitTitle", "Выход из Cmds Manager"), Pair("Tray.ExitConfirm", "Все запущенные через Cmds Manager скрипты будут остановлены. Выйти?"),
                 Pair("Tray.Exiting", "Cmds Manager — завершение"), Pair("App.UiErrorTitle", "Ошибка Cmds Manager")
             });
@@ -172,6 +177,10 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("Settings.Tab.Console", "Console"), Pair("Settings.Tab.Tools", "Paths and logs"),
                 Pair("Settings.StartWithWindows", "Start Cmds Manager when signing in to Windows"), Pair("Settings.StartMinimized", "Hide to tray when started manually"),
                 Pair("Settings.AutoStartScripts", "Start selected scripts on launch"), Pair("Settings.ConfirmDelete", "Confirm entry deletion"), Pair("Settings.Language", "Language"),
+                Pair("Settings.ShowAppHotkey", "Show App Hotkey"), Pair("Settings.ShowAppHotkeyClear", "Clear"),
+                Pair("Settings.ShowAppHotkeyHint", "Select the checkbox, then press a combination containing Ctrl, Alt, Shift, or Win."),
+                Pair("Settings.ShowAppHotkeyRequired", "Press a Ctrl, Alt, Shift, or Win combination for Show App Hotkey."),
+                Pair("Settings.ShowAppHotkeyUnavailable", "The hotkey “{0}” is already used by another application or reserved by Windows."),
                 Pair("Settings.Theme", "Theme"), Pair("Theme.System", "System"), Pair("Theme.Light", "Light"), Pair("Theme.Dark", "Dark"),
                 Pair("Settings.ConsoleFont", "Console font"), Pair("Settings.ChooseFont", "Choose…"), Pair("Settings.Editor", "Editor"), Pair("Settings.EditorArguments", "Editor arguments"),
                 Pair("Settings.ConsoleBufferSize", "Buffer size, KB"), Pair("Settings.ConsoleLogMaxSize", "Maximum log, MB"),
@@ -188,6 +197,7 @@ namespace CmdsManager.Infrastructure.Configuration
                 Pair("About.Build", "Built on: {0}"), Pair("About.Author", "Author:"), Pair("About.License", "License:"),
                 Pair("About.Website", "Visit Website:"), Pair("About.Donate", "Donate"),
                 Pair("Tray.Toggle", "Open / hide"), Pair("Tray.AutoStartFailed", "Could not auto-start {0} script(s). Open the app for details."),
+                Pair("Tray.ShowAppHotkeyFailed", "Could not register the hotkey “{0}”. Change it in Settings."),
                 Pair("Tray.ExitTitle", "Exit Cmds Manager"), Pair("Tray.ExitConfirm", "All scripts started by Cmds Manager will be stopped. Exit?"),
                 Pair("Tray.Exiting", "Cmds Manager — exiting"), Pair("App.UiErrorTitle", "Cmds Manager error")
             });

@@ -92,7 +92,7 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 9;
+        public int ConfigVersion { get; set; } = 10;
         public ApplicationTheme Theme { get; set; } = ApplicationTheme.System;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
@@ -100,6 +100,8 @@ namespace CmdsManager.Domain
         public bool StartHiddenWhenAutoStarted { get; set; } = true;
         public bool AutoStartScripts { get; set; } = true;
         public bool ConfirmBeforeDelete { get; set; } = true;
+        public bool ShowAppHotkeyEnabled { get; set; }
+        public string ShowAppHotkey { get; set; } = string.Empty;
         public bool MainWindowPlacementSaved { get; set; }
         public int MainWindowX { get; set; }
         public int MainWindowY { get; set; }

@@ -28,6 +28,7 @@ namespace CmdsManager.Infrastructure.Windows
         internal const int StdInputHandle = -10;
         internal const int EmGetFirstVisibleLine = 0x00CE;
         internal const int EmLineScroll = 0x00B6;
+        internal const int WmHotkey = 0x0312;
         internal static readonly IntPtr InvalidHandleValue = new IntPtr(-1);
 
         [StructLayout(LayoutKind.Sequential)]
@@ -178,6 +179,17 @@ namespace CmdsManager.Infrastructure.Windows
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetForegroundWindow(IntPtr window);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool RegisterHotKey(IntPtr window, int identifier, uint modifiers, uint virtualKey);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool UnregisterHotKey(IntPtr window, int identifier);
+
+        [DllImport("user32.dll")]
+        internal static extern short GetKeyState(int virtualKey);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         internal static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);

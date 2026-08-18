@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using CmdsManager.Infrastructure.Windows;
 
 namespace CmdsManager.Presentation.Theming
 {
@@ -429,6 +430,182 @@ namespace CmdsManager.Presentation.Theming
         {
             base.OnClick(args);
             _editor.Focus();
+        }
+
+        private void LayoutEditor()
+        {
+            if (_editor == null) return;
+            var editorHeight = _editor.PreferredHeight;
+            _editor.SetBounds(HorizontalTextMargin, Math.Max(0, (Height - editorHeight) / 2),
+                Math.Max(1, Width - HorizontalTextMargin * 2), editorHeight);
+        }
+
+        private void TrackHover(Control control)
+        {
+            control.MouseEnter += (sender, args) => SetHot(true);
+            control.MouseLeave += (sender, args) => SetHot(ClientRectangle.Contains(PointToClient(MousePosition)));
+            foreach (Control child in control.Controls) TrackHover(child);
+        }
+
+        private void SetHot(bool value)
+        {
+            if (_hot == value) return;
+            _hot = value;
+            Invalidate();
+        }
+    }
+
+    internal sealed class FluentHotkeyBox : UserControl, IFluentThemedControl
+    {
+        private const int ControlHeight = 29;
+        private const int CornerRadius = 6;
+        private const int HorizontalTextMargin = 8;
+        private readonly TextBox _editor;
+        private AppThemePalette _palette = AppThemePalette.Light();
+        private bool _hot;
+
+        internal FluentHotkeyBox()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            MinimumSize = new Size(120, ControlHeight);
+            Size = new Size(170, ControlHeight);
+            Height = ControlHeight;
+            TabStop = false;
+
+            _editor = new TextBox
+            {
+                BorderStyle = BorderStyle.None,
+                ReadOnly = true,
+                ShortcutsEnabled = false,
+                TabStop = true,
+                Tag = AppThemeManager.PreserveColorsTag
+            };
+            Controls.Add(_editor);
+            _editor.KeyDown += HandleEditorKeyDown;
+            _editor.PreviewKeyDown += (sender, args) => args.IsInputKey = true;
+            _editor.Enter += (sender, args) => Invalidate();
+            _editor.Leave += (sender, args) => Invalidate();
+            TrackHover(this);
+            LayoutEditor();
+        }
+
+        internal string Gesture
+        {
+            get { return _editor.Text; }
+            set
+            {
+                ShowAppHotkeyGesture parsed;
+                _editor.Text = ShowAppHotkeyGesture.TryParse(value, out parsed)
+                    ? parsed.ToString()
+                    : (value ?? string.Empty).Trim();
+            }
+        }
+
+        internal event EventHandler GestureChanged;
+
+        internal void ClearGesture()
+        {
+            if (_editor.Text.Length == 0) return;
+            _editor.Clear();
+            GestureChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void ApplyPalette(AppThemePalette palette)
+        {
+            _palette = palette ?? AppThemePalette.Light();
+            BackColor = _palette.Input;
+            ForeColor = Enabled ? _palette.Text : _palette.DisabledText;
+            _editor.BackColor = _palette.Input;
+            _editor.ForeColor = Enabled ? _palette.Text : _palette.DisabledText;
+            _editor.BorderStyle = BorderStyle.None;
+            FluentGeometry.ApplyRoundedRegion(this, CornerRadius);
+            Invalidate(true);
+        }
+
+        public override Size GetPreferredSize(Size proposedSize)
+        {
+            var preferred = base.GetPreferredSize(proposedSize);
+            return new Size(preferred.Width, Math.Max(ControlHeight, _editor.PreferredHeight + 10));
+        }
+
+        protected override void OnResize(EventArgs args)
+        {
+            base.OnResize(args);
+            LayoutEditor();
+            FluentGeometry.ApplyRoundedRegion(this, CornerRadius);
+        }
+
+        protected override void OnPaint(PaintEventArgs args)
+        {
+            using (var path = FluentGeometry.RoundedRectangle(
+                new RectangleF(0.5f, 0.5f, Math.Max(1f, Width - 1f), Math.Max(1f, Height - 1f)), CornerRadius))
+            using (var pen = new Pen(_editor.Focused ? _palette.Accent : _hot ? _palette.MutedText : _palette.Border, 1f)
+            {
+                Alignment = PenAlignment.Inset
+            })
+            {
+                args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                args.Graphics.DrawPath(pen, path);
+            }
+        }
+
+        protected override void OnClick(EventArgs args)
+        {
+            base.OnClick(args);
+            _editor.Focus();
+            _editor.SelectAll();
+        }
+
+        protected override void OnEnabledChanged(EventArgs args)
+        {
+            base.OnEnabledChanged(args);
+            _editor.ForeColor = Enabled ? _palette.Text : _palette.DisabledText;
+            Invalidate(true);
+        }
+
+        private void HandleEditorKeyDown(object sender, KeyEventArgs args)
+        {
+            if (IsModifierKey(args.KeyCode))
+            {
+                args.Handled = true;
+                args.SuppressKeyPress = true;
+                return;
+            }
+            args.Handled = true;
+            args.SuppressKeyPress = true;
+
+            if (args.KeyCode == Keys.Back || args.KeyCode == Keys.Delete || args.KeyCode == Keys.Escape)
+            {
+                ClearGesture();
+                return;
+            }
+
+            var modifiers = ShowAppHotkeyModifiers.None;
+            if (args.Control) modifiers |= ShowAppHotkeyModifiers.Control;
+            if (args.Alt) modifiers |= ShowAppHotkeyModifiers.Alt;
+            if (args.Shift) modifiers |= ShowAppHotkeyModifiers.Shift;
+            if (IsPressed(Keys.LWin) || IsPressed(Keys.RWin)) modifiers |= ShowAppHotkeyModifiers.Win;
+
+            ShowAppHotkeyGesture gesture;
+            if (!ShowAppHotkeyGesture.TryCreate(args.KeyCode, modifiers, out gesture)) return;
+            if (string.Equals(_editor.Text, gesture.ToString(), StringComparison.Ordinal)) return;
+            _editor.Text = gesture.ToString();
+            _editor.SelectAll();
+            GestureChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        private static bool IsModifierKey(Keys key)
+        {
+            return key == Keys.ControlKey || key == Keys.LControlKey || key == Keys.RControlKey ||
+                key == Keys.ShiftKey || key == Keys.LShiftKey || key == Keys.RShiftKey ||
+                key == Keys.Menu || key == Keys.LMenu || key == Keys.RMenu ||
+                key == Keys.LWin || key == Keys.RWin;
+        }
+
+        private static bool IsPressed(Keys key)
+        {
+            return (NativeMethods.GetKeyState((int)key) & 0x8000) != 0;
         }
 
         private void LayoutEditor()

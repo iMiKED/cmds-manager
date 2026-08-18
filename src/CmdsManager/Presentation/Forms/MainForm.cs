@@ -9,6 +9,7 @@ using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Configuration;
 using CmdsManager.Infrastructure.Execution;
+using CmdsManager.Infrastructure.Windows;
 using CmdsManager.Presentation.Controls;
 using CmdsManager.Presentation.Theming;
 using Microsoft.Win32;
@@ -22,6 +23,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly ProcessSupervisor _supervisor;
         private readonly IScriptEditorLauncher _editor;
         private readonly IApplicationStartupRegistration _startup;
+        private readonly ShowAppHotkeyManager _showAppHotkey;
         private readonly IExecutionLog _log;
         private readonly LocalizationService _text;
         private readonly DataGridView _grid = new DataGridView();
@@ -64,13 +66,15 @@ namespace CmdsManager.Presentation.Forms
         private AppThemePalette _palette = AppThemePalette.Light();
 
         public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
-            IScriptEditorLauncher editor, IApplicationStartupRegistration startup, IExecutionLog log, LocalizationService text)
+            IScriptEditorLauncher editor, IApplicationStartupRegistration startup, ShowAppHotkeyManager showAppHotkey,
+            IExecutionLog log, LocalizationService text)
         {
             _state = state ?? throw new ArgumentNullException(nameof(state));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
             _editor = editor ?? throw new ArgumentNullException(nameof(editor));
             _startup = startup ?? throw new ArgumentNullException(nameof(startup));
+            _showAppHotkey = showAppHotkey ?? throw new ArgumentNullException(nameof(showAppHotkey));
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _console = new ConsoleTabsControl(_text, () => Configuration.Application, ResolveConsoleWordWrap,
@@ -518,9 +522,11 @@ namespace CmdsManager.Presentation.Forms
                 candidate.PowerShell7Path = form.PowerShell7PathResult;
                 candidate.Localization.Language = form.LanguageResult;
                 var previousStartup = Configuration.Application.StartWithWindows;
+                var previousApplication = Configuration.Application.Clone();
                 try
                 {
                     _startup.Synchronize(candidate.Application.StartWithWindows);
+                    _showAppHotkey.Apply(candidate.Application);
                     _store.Save(candidate);
                     _state.Current = candidate;
                     _console.ApplySettings();
@@ -532,7 +538,9 @@ namespace CmdsManager.Presentation.Forms
                 {
                     try { _startup.Synchronize(previousStartup); }
                     catch (Exception rollbackException) { _log.Error("Unable to roll back the startup registration.", rollbackException); }
-                    ShowError(_text["Main.SettingsSaveFailed"], exception);
+                    try { _showAppHotkey.Apply(previousApplication); }
+                    catch (Exception rollbackException) { _log.Error("Unable to roll back the Show App Hotkey.", rollbackException); }
+                    ShowError(_text["Main.SettingsSaveFailed"], LocalizeHotkeyException(exception));
                 }
             }
         }
@@ -544,10 +552,13 @@ namespace CmdsManager.Presentation.Forms
                 MessageBox.Show(this, _text["Main.ReloadRunning"], _text["Main.Reload"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+            var previousStartup = Configuration.Application.StartWithWindows;
+            var previousApplication = Configuration.Application.Clone();
             try
             {
                 var reloaded = _store.Reload();
                 _startup.Synchronize(reloaded.Application.StartWithWindows);
+                _showAppHotkey.Apply(reloaded.Application);
                 _state.Current = reloaded;
                 _console.ApplySettings();
                 ApplyTheme();
@@ -555,7 +566,23 @@ namespace CmdsManager.Presentation.Forms
                 ApplyConsolePaneHeight();
                 _log.Information("Configuration reloaded from disk.");
             }
-            catch (Exception exception) { ShowError(_text["Main.ReloadFailed"], exception); }
+            catch (Exception exception)
+            {
+                try { _startup.Synchronize(previousStartup); }
+                catch (Exception rollbackException) { _log.Error("Unable to roll back the startup registration.", rollbackException); }
+                try { _showAppHotkey.Apply(previousApplication); }
+                catch (Exception rollbackException) { _log.Error("Unable to roll back the Show App Hotkey.", rollbackException); }
+                ShowError(_text["Main.ReloadFailed"], LocalizeHotkeyException(exception));
+            }
+        }
+
+        private Exception LocalizeHotkeyException(Exception exception)
+        {
+            var registration = exception as ShowAppHotkeyRegistrationException;
+            return registration == null
+                ? exception
+                : new InvalidOperationException(
+                    _text.Get("Settings.ShowAppHotkeyUnavailable", registration.Gesture), registration);
         }
 
         private void SaveConfiguration(AppConfiguration candidate)

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using CmdsManager.Domain;
+using CmdsManager.Infrastructure.Windows;
 
 namespace CmdsManager.Infrastructure.Configuration
 {
@@ -32,7 +33,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 9;
+        private const int CurrentVersion = 10;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -152,6 +153,8 @@ namespace CmdsManager.Infrastructure.Configuration
             app.StartHiddenWhenAutoStarted = ReadBool(ini, "Application", "StartHiddenWhenAutoStarted", true);
             app.AutoStartScripts = ReadBool(ini, "Application", "AutoStartScripts", true);
             app.ConfirmBeforeDelete = ReadBool(ini, "Application", "ConfirmBeforeDelete", true);
+            app.ShowAppHotkeyEnabled = ReadBool(ini, "Application", "ShowAppHotkeyEnabled", false);
+            app.ShowAppHotkey = ini.Get("Application", "ShowAppHotkey", string.Empty).Trim();
             app.MainWindowPlacementSaved = ReadBool(ini, "Application", "MainWindowPlacementSaved", false);
             app.MainWindowX = ReadInt(ini, "Application", "MainWindowX", app.MainWindowX, -100000, 100000);
             app.MainWindowY = ReadInt(ini, "Application", "MainWindowY", app.MainWindowY, -100000, 100000);
@@ -249,6 +252,8 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set("Application", "StartHiddenWhenAutoStarted", Bool(app.StartHiddenWhenAutoStarted));
             ini.Set("Application", "AutoStartScripts", Bool(app.AutoStartScripts));
             ini.Set("Application", "ConfirmBeforeDelete", Bool(app.ConfirmBeforeDelete));
+            ini.Set("Application", "ShowAppHotkeyEnabled", Bool(app.ShowAppHotkeyEnabled));
+            ini.Set("Application", "ShowAppHotkey", app.ShowAppHotkey ?? string.Empty);
             ini.Set("Application", "MainWindowPlacementSaved", Bool(app.MainWindowPlacementSaved));
             ini.Set("Application", "MainWindowX", app.MainWindowX);
             ini.Set("Application", "MainWindowY", app.MainWindowY);
@@ -347,6 +352,19 @@ namespace CmdsManager.Infrastructure.Configuration
             if (string.IsNullOrWhiteSpace(configuration.Application.EditorPath))
             {
                 throw new ConfigurationValidationException("Application", "EditorPath", "value is required");
+            }
+
+            ShowAppHotkeyGesture showAppHotkey;
+            if (configuration.Application.ShowAppHotkeyEnabled &&
+                string.IsNullOrWhiteSpace(configuration.Application.ShowAppHotkey))
+            {
+                throw new ConfigurationValidationException("Application", "ShowAppHotkey", "value is required when enabled");
+            }
+            if (!string.IsNullOrWhiteSpace(configuration.Application.ShowAppHotkey) &&
+                !ShowAppHotkeyGesture.TryParse(configuration.Application.ShowAppHotkey, out showAppHotkey))
+            {
+                throw new ConfigurationValidationException("Application", "ShowAppHotkey",
+                    "expected a modifier and a supported key, for example Ctrl+Alt+M");
             }
 
             if (string.IsNullOrWhiteSpace(configuration.Application.ConsoleFontName) || configuration.Application.ConsoleFontSize < 6f || configuration.Application.ConsoleFontSize > 48f)

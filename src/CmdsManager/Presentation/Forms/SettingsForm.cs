@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
+using CmdsManager.Infrastructure.Windows;
 using CmdsManager.Presentation.Controls;
 using CmdsManager.Presentation.Theming;
 
@@ -17,8 +18,11 @@ namespace CmdsManager.Presentation.Forms
         private readonly CheckBox _startMinimized = new FluentCheckBox();
         private readonly CheckBox _autoStartScripts = new FluentCheckBox();
         private readonly CheckBox _confirmDelete = new FluentCheckBox();
+        private readonly CheckBox _showAppHotkeyEnabled = new FluentCheckBox();
         private readonly CheckBox _logScriptOutput = new FluentCheckBox();
         private readonly CheckBox _consoleAutoRecord = new FluentCheckBox();
+        private readonly FluentHotkeyBox _showAppHotkey = new FluentHotkeyBox();
+        private readonly FluentButton _showAppHotkeyClear = new FluentButton();
         private readonly FluentTextBox _editorPath = new FluentTextBox();
         private readonly FluentTextBox _editorArguments = new FluentTextBox();
         private readonly FluentTextBox _powerShell7Path = new FluentTextBox();
@@ -78,6 +82,11 @@ namespace CmdsManager.Presentation.Forms
             _startMinimized.Text = _text["Settings.StartMinimized"];
             _autoStartScripts.Text = _text["Settings.AutoStartScripts"];
             _confirmDelete.Text = _text["Settings.ConfirmDelete"];
+            _showAppHotkeyEnabled.Text = _text["Settings.ShowAppHotkey"];
+            _showAppHotkeyEnabled.AccessibleName = _text["Settings.ShowAppHotkey"];
+            _showAppHotkey.AccessibleName = _text["Settings.ShowAppHotkey"];
+            _showAppHotkey.AccessibleDescription = _text["Settings.ShowAppHotkeyHint"];
+            _showAppHotkeyClear.Text = _text["Settings.ShowAppHotkeyClear"];
             _logScriptOutput.Text = _text["Settings.LogOutput"];
             _consoleAutoRecord.Text = _text["Settings.ConsoleAutoRecord"];
             foreach (var code in localization.Languages.Keys.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
@@ -90,6 +99,7 @@ namespace CmdsManager.Presentation.Forms
             AddRow(general, _text["Settings.Language"], _language);
             AddRow(general, _text["Settings.Theme"], _theme);
             AddRow(general, _text["Settings.ConsoleFont"], WithFontButton());
+            AddFullRow(general, WithShowAppHotkey());
             AddRow(general, string.Empty, _startWithWindows);
             AddRow(general, string.Empty, _startMinimized);
             AddRow(general, string.Empty, _autoStartScripts);
@@ -147,6 +157,16 @@ namespace CmdsManager.Presentation.Forms
             _startMinimized.Checked = source.StartMinimized;
             _autoStartScripts.Checked = source.AutoStartScripts;
             _confirmDelete.Checked = source.ConfirmBeforeDelete;
+            _showAppHotkey.Gesture = source.ShowAppHotkey;
+            _showAppHotkeyEnabled.Checked = source.ShowAppHotkeyEnabled;
+            _showAppHotkeyEnabled.CheckedChanged += (sender, args) => UpdateShowAppHotkeyState();
+            _showAppHotkey.GestureChanged += (sender, args) => UpdateShowAppHotkeyState();
+            _showAppHotkeyClear.Click += (sender, args) =>
+            {
+                _showAppHotkey.ClearGesture();
+                _showAppHotkeyEnabled.Checked = false;
+            };
+            UpdateShowAppHotkeyState();
             _editorPath.Text = source.EditorPath;
             _editorArguments.Text = source.EditorArguments;
             _powerShell7Path.Text = powerShell7Path ?? string.Empty;
@@ -186,11 +206,17 @@ namespace CmdsManager.Presentation.Forms
                 var powerShellPath = Environment.ExpandEnvironmentVariables(_powerShell7Path.Text.Trim());
                 if (powerShellPath.Length > 0 && !File.Exists(powerShellPath) && !Directory.Exists(powerShellPath))
                     throw new FileNotFoundException(_text["Settings.PowerShellMissing"], powerShellPath);
+                ShowAppHotkeyGesture showAppHotkey = null;
+                if (_showAppHotkeyEnabled.Checked &&
+                    !ShowAppHotkeyGesture.TryParse(_showAppHotkey.Gesture, out showAppHotkey))
+                    throw new InvalidOperationException(_text["Settings.ShowAppHotkeyRequired"]);
 
                 SettingsResult.StartWithWindows = _startWithWindows.Checked;
                 SettingsResult.StartMinimized = _startMinimized.Checked;
                 SettingsResult.AutoStartScripts = _autoStartScripts.Checked;
                 SettingsResult.ConfirmBeforeDelete = _confirmDelete.Checked;
+                SettingsResult.ShowAppHotkeyEnabled = _showAppHotkeyEnabled.Checked;
+                SettingsResult.ShowAppHotkey = showAppHotkey?.ToString() ?? _showAppHotkey.Gesture;
                 SettingsResult.EditorPath = _editorPath.Text.Trim();
                 SettingsResult.EditorArguments = _editorArguments.Text.Trim();
                 SettingsResult.LogRetentionDays = decimal.ToInt32(_retention.Value);
@@ -244,6 +270,37 @@ namespace CmdsManager.Presentation.Forms
             panel.Controls.Add(_fontDisplay, 0, 0);
             panel.Controls.Add(choose, 1, 0);
             return panel;
+        }
+
+        private Control WithShowAppHotkey()
+        {
+            var panel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                ColumnCount = 3,
+                Margin = Padding.Empty
+            };
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            _showAppHotkeyEnabled.AutoSize = true;
+            _showAppHotkeyEnabled.Anchor = AnchorStyles.Left;
+            _showAppHotkeyEnabled.Margin = new Padding(0, 5, 8, 0);
+            _showAppHotkey.Dock = DockStyle.Fill;
+            _showAppHotkey.Margin = Padding.Empty;
+            _showAppHotkeyClear.AutoSize = true;
+            _showAppHotkeyClear.Margin = new Padding(5, 0, 0, 0);
+            panel.Controls.Add(_showAppHotkeyEnabled, 0, 0);
+            panel.Controls.Add(_showAppHotkey, 1, 0);
+            panel.Controls.Add(_showAppHotkeyClear, 2, 0);
+            return panel;
+        }
+
+        private void UpdateShowAppHotkeyState()
+        {
+            _showAppHotkey.Enabled = _showAppHotkeyEnabled.Checked;
+            _showAppHotkeyClear.Enabled = _showAppHotkey.Gesture.Length > 0;
         }
 
         private Control WithFileButton(FluentTextBox textBox, string filter)

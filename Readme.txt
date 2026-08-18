@@ -57,6 +57,8 @@ unless the selected folder allows the application to update its INI and logs.
 - open script files in a configurable external editor;
 - start one script, all enabled scripts, or selected scripts automatically;
 - configure application auto-start for the current Windows user;
+- configure a global Show App Hotkey that shows and activates the application
+  while Cmds Manager is running;
 - show a static green execution indicator and detailed runtime state;
 - capture stdout and stderr in a fast, bounded console history;
 - configure how much console history is kept in memory;
@@ -236,8 +238,9 @@ variables such as %SystemRoot% are expanded.
 [Application]
 
 ConfigVersion
-  INI schema version maintained by Cmds Manager. Current value: 9. Do not lower
-  it manually. Configurations from versions 1 through 8 are migrated to 9.
+  INI schema version maintained by Cmds Manager. Current value: 10. Do not
+  lower it manually. Configurations from versions 1 through 9 are migrated to
+  10.
 
 Theme
   Application shell theme: System, Light, or Dark. Default: System.
@@ -263,6 +266,19 @@ AutoStartScripts
 ConfirmBeforeDelete
   true asks before an entry is removed. The script file is never deleted.
   Default: true.
+
+ShowAppHotkeyEnabled
+  true registers ShowAppHotkey as a Windows global hotkey while Cmds Manager is
+  running. The hotkey always shows and activates the application; it never
+  hides an already visible window. Default: false.
+
+ShowAppHotkey
+  Key combination for Show App Hotkey, for example Ctrl+Alt+M or Shift+Win+F12.
+  At least one of Ctrl, Alt, Shift, or Win and one supported non-modifier key
+  are required. Configure it in Settings by selecting Show App Hotkey and then
+  pressing the combination in the Fluent capture field. If Windows or another
+  application already uses it, the new value is not saved and the previous
+  registered hotkey remains active. Default: empty.
 
 MainWindowPlacementSaved
   Internal marker indicating that the window geometry below is valid.
@@ -509,6 +525,8 @@ Files, если выбранная папка не позволяет обнов
 - запуск одного скрипта, всех активных скриптов или автоматический запуск
   отмеченных скриптов;
 - автозапуск приложения для текущего пользователя Windows;
+- глобальный хоткей «Показать приложение», который показывает и активирует
+  Cmds Manager, пока приложение запущено;
 - статичный зелёный индикатор выполнения и подробное состояние процесса;
 - быстрый перехват stdout и stderr с ограниченной историей консоли;
 - настройка объёма истории, сохраняемой в каждой консоли;
@@ -689,8 +707,8 @@ INI хранится рядом с CmdsManager.exe в UTF-8. Логически�
 [Application]
 
 ConfigVersion
-  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 9.
-  Не уменьшайте её вручную. Конфигурации версий 1–8 мигрируют в версию 9.
+  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 10.
+  Не уменьшайте её вручную. Конфигурации версий 1–9 мигрируют в версию 10.
 
 Theme
   Тема оболочки: System, Light или Dark. По умолчанию: System.
@@ -716,6 +734,20 @@ AutoStartScripts
 ConfirmBeforeDelete
   true запрашивает подтверждение удаления записи. Сам файл не удаляется.
   По умолчанию: true.
+
+ShowAppHotkeyEnabled
+  true регистрирует ShowAppHotkey как глобальный хоткей Windows, пока Cmds
+  Manager запущен. Хоткей всегда показывает и активирует приложение и никогда
+  не скрывает уже видимое окно. По умолчанию: false.
+
+ShowAppHotkey
+  Сочетание для хоткея «Показать приложение», например Ctrl+Alt+M или
+  Shift+Win+F12. Требуются хотя бы один модификатор Ctrl, Alt, Shift либо Win и
+  одна поддерживаемая обычная клавиша. В Настройках установите флажок «Хоткей
+  "Показать приложение"», затем нажмите сочетание во Fluent-поле. Если оно уже
+  занято Windows или другой программой, новое значение не сохраняется, а
+  предыдущий зарегистрированный хоткей продолжает работать. По умолчанию:
+  пусто.
 
 MainWindowPlacementSaved
   Служебный признак того, что сохранённая ниже геометрия окна действительна.
