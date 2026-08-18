@@ -246,9 +246,9 @@ variables such as %SystemRoot% are expanded.
 [Application]
 
 ConfigVersion
-  INI schema version maintained by Cmds Manager. Current value: 10. Do not
-  lower it manually. Configurations from versions 1 through 9 are migrated to
-  10.
+  INI schema version maintained by Cmds Manager. Current value: 11. Do not
+  lower it manually. Configurations from versions 1 through 10 are migrated to
+  11.
 
 Theme
   Application shell theme: System, Light, or Dark. Default: System.
@@ -286,7 +286,8 @@ ShowAppHotkey
   are required. Configure it in Settings by selecting Show App Hotkey and then
   pressing the combination in the Fluent capture field. If Windows or another
   application already uses it, the new value is not saved and the previous
-  registered hotkey remains active. Default: empty.
+  registered hotkey remains active. Default: Ctrl+Alt+M. The hotkey itself is
+  disabled by default until ShowAppHotkeyEnabled is selected.
 
 MainWindowPlacementSaved
   Internal marker indicating that the window geometry below is valid.
@@ -724,8 +725,8 @@ INI хранится рядом с CmdsManager.exe в UTF-8. Логически�
 [Application]
 
 ConfigVersion
-  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 10.
-  Не уменьшайте её вручную. Конфигурации версий 1–9 мигрируют в версию 10.
+  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 11.
+  Не уменьшайте её вручную. Конфигурации версий 1–10 мигрируют в версию 11.
 
 Theme
   Тема оболочки: System, Light или Dark. По умолчанию: System.
@@ -764,7 +765,7 @@ ShowAppHotkey
   "Показать приложение"», затем нажмите сочетание во Fluent-поле. Если оно уже
   занято Windows или другой программой, новое значение не сохраняется, а
   предыдущий зарегистрированный хоткей продолжает работать. По умолчанию:
-  пусто.
+  Ctrl+Alt+M. Сам хоткей выключен, пока не установлен ShowAppHotkeyEnabled.
 
 MainWindowPlacementSaved
   Служебный признак того, что сохранённая ниже геометрия окна действительна.

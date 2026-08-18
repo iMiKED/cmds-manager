@@ -1,5 +1,5 @@
 [Application]
-ConfigVersion=10
+ConfigVersion=11
 Theme=System
 CloseToTray=true
 StartMinimized=false
@@ -8,7 +8,7 @@ StartHiddenWhenAutoStarted=true
 AutoStartScripts=true
 ConfirmBeforeDelete=true
 ShowAppHotkeyEnabled=false
-ShowAppHotkey=
+ShowAppHotkey=Ctrl+Alt+M
 MainWindowPlacementSaved=false
 MainWindowX=0
 MainWindowY=0

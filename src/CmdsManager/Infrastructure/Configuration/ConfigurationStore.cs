@@ -33,7 +33,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 10;
+        private const int CurrentVersion = 11;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -154,7 +154,7 @@ namespace CmdsManager.Infrastructure.Configuration
             app.AutoStartScripts = ReadBool(ini, "Application", "AutoStartScripts", true);
             app.ConfirmBeforeDelete = ReadBool(ini, "Application", "ConfirmBeforeDelete", true);
             app.ShowAppHotkeyEnabled = ReadBool(ini, "Application", "ShowAppHotkeyEnabled", false);
-            app.ShowAppHotkey = ini.Get("Application", "ShowAppHotkey", string.Empty).Trim();
+            app.ShowAppHotkey = ini.Get("Application", "ShowAppHotkey", app.ShowAppHotkey).Trim();
             app.MainWindowPlacementSaved = ReadBool(ini, "Application", "MainWindowPlacementSaved", false);
             app.MainWindowX = ReadInt(ini, "Application", "MainWindowX", app.MainWindowX, -100000, 100000);
             app.MainWindowY = ReadInt(ini, "Application", "MainWindowY", app.MainWindowY, -100000, 100000);
@@ -616,6 +616,8 @@ namespace CmdsManager.Infrastructure.Configuration
 
         private static void UpgradeConfiguration(AppConfiguration configuration, int loadedVersion)
         {
+            if (loadedVersion < 11 && string.IsNullOrWhiteSpace(configuration.Application.ShowAppHotkey))
+                configuration.Application.ShowAppHotkey = "Ctrl+Alt+M";
             if (configuration.Localization?.Languages == null) return;
             foreach (var language in configuration.Localization.Languages.Values)
                 language.Remove("Settings.Warning");

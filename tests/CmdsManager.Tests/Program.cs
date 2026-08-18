@@ -16,6 +16,7 @@ using CmdsManager.Infrastructure.Logging;
 using CmdsManager.Infrastructure.Windows;
 using CmdsManager.Presentation.Forms;
 using CmdsManager.Presentation.Controls;
+using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Tests
 {
@@ -184,7 +185,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(10, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(11, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -194,7 +195,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(10, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal(11, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
                 Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
                 Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
@@ -208,7 +209,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nSettings.Title=Настройки CmdsManager\r\n",
                     new UTF8Encoding(false));
                 var version5 = new ConfigurationStore(version5Path).LoadOrCreate();
-                Equal(10, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
+                Equal(11, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
                 Equal("Cmds Manager settings", version5.Localization.Languages["en"]["Settings.Title"],
                     "old default English brand is migrated");
                 Equal("Настройки Cmds Manager", version5.Localization.Languages["ru"]["Settings.Title"],
@@ -217,7 +218,7 @@ namespace CmdsManager.Tests
                 var version6Path = Path.Combine(directory, "Version6.ini");
                 File.WriteAllText(version6Path, "[Application]\r\nConfigVersion=6\r\n", new UTF8Encoding(false));
                 var version6 = new ConfigurationStore(version6Path).LoadOrCreate();
-                Equal(10, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
+                Equal(11, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
                 Equal(ApplicationTheme.System, version6.Application.Theme,
                     "existing installations default to the system application theme");
                 Assert(File.ReadAllText(version6Path, Encoding.UTF8).Contains("Theme=System"),
@@ -233,7 +234,7 @@ namespace CmdsManager.Tests
                     "Name=Version 7 script\r\nPath=" + scriptPath + "\r\n",
                     new UTF8Encoding(false));
                 var version7 = new ConfigurationStore(version7Path).LoadOrCreate();
-                Equal(10, version7.Application.ConfigVersion, "version 7 configuration is upgraded");
+                Equal(11, version7.Application.ConfigVersion, "version 7 configuration is upgraded");
                 Equal(false, version7.Scripts[0].Launch.WordWrap,
                     "existing scripts receive the default disabled word-wrap setting");
                 var version7Text = File.ReadAllText(version7Path, Encoding.UTF8);
@@ -250,7 +251,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nAbout.Build=Сборка: {0}\r\n",
                     new UTF8Encoding(false));
                 var version8 = new ConfigurationStore(version8Path).LoadOrCreate();
-                Equal(10, version8.Application.ConfigVersion, "version 8 configuration is upgraded");
+                Equal(11, version8.Application.ConfigVersion, "version 8 configuration is upgraded");
                 Equal(256, version8.Application.ConsoleBufferSizeKb, "version 8 receives the default console buffer");
                 Equal(false, version8.Application.ConsoleAutoRecord, "version 8 keeps automatic recording disabled");
                 Equal(50, version8.Application.ConsoleLogMaxSizeMb, "version 8 receives the default console log limit");
@@ -266,15 +267,26 @@ namespace CmdsManager.Tests
                 var version9Path = Path.Combine(directory, "Version9.ini");
                 File.WriteAllText(version9Path, "[Application]\r\nConfigVersion=9\r\n", new UTF8Encoding(false));
                 var version9 = new ConfigurationStore(version9Path).LoadOrCreate();
-                Equal(10, version9.Application.ConfigVersion, "version 9 configuration is upgraded");
+                Equal(11, version9.Application.ConfigVersion, "version 9 configuration is upgraded");
                 Equal(false, version9.Application.ShowAppHotkeyEnabled,
                     "version 9 keeps Show App Hotkey disabled by default");
-                Equal(string.Empty, version9.Application.ShowAppHotkey,
-                    "version 9 receives an empty Show App Hotkey combination");
+                Equal("Ctrl+Alt+M", version9.Application.ShowAppHotkey,
+                    "version 9 receives the default Show App Hotkey combination");
                 var version9Text = File.ReadAllText(version9Path, Encoding.UTF8);
                 Assert(version9Text.Contains("ShowAppHotkeyEnabled=false") &&
-                    version9Text.Contains("ShowAppHotkey="),
+                    version9Text.Contains("ShowAppHotkey=Ctrl+Alt+M"),
                     "version 9 migration writes Show App Hotkey settings");
+
+                var version10Path = Path.Combine(directory, "Version10.ini");
+                File.WriteAllText(version10Path,
+                    "[Application]\r\nConfigVersion=10\r\nShowAppHotkeyEnabled=false\r\nShowAppHotkey=\r\n",
+                    new UTF8Encoding(false));
+                var version10 = new ConfigurationStore(version10Path).LoadOrCreate();
+                Equal(11, version10.Application.ConfigVersion, "version 10 configuration is upgraded");
+                Equal(false, version10.Application.ShowAppHotkeyEnabled,
+                    "version 10 keeps Show App Hotkey disabled by default");
+                Equal("Ctrl+Alt+M", version10.Application.ShowAppHotkey,
+                    "version 10 empty hotkey is migrated to the default combination");
             });
         }
 
@@ -782,10 +794,23 @@ namespace CmdsManager.Tests
                     Assert(AllControls(settings).OfType<CheckBox>().Any(control =>
                             control.Text == "Show App Hotkey"),
                         "settings exposes Show App Hotkey under its requested English name");
-                    var hotkeyBox = AllControls(settings).Single(control =>
-                        control.GetType().Name == "FluentHotkeyBox");
+                    var hotkeyBox = AllControls(settings).OfType<FluentHotkeyBox>().Single();
                     Assert(hotkeyBox.Height >= 28 && hotkeyBox.Width >= 120,
                         "Show App Hotkey uses a usable Fluent capture field");
+                    Equal("Ctrl+Alt+M", hotkeyBox.Gesture,
+                        "Show App Hotkey field is prefilled with the default combination");
+                    var fontInput = AllControls(settings).OfType<FluentTextBox>()
+                        .Single(control => control.Text.StartsWith("Consolas,", StringComparison.Ordinal));
+                    Equal(AbsoluteLeft(fontInput, settings), AbsoluteLeft(hotkeyBox, settings),
+                        "Show App Hotkey field shares the left edge of the other settings inputs");
+                    Equal(fontInput.Width, hotkeyBox.Width,
+                        "Show App Hotkey and console font fields have equal lengths");
+                    var chooseFontButton = AllControls(settings).OfType<Button>()
+                        .Single(control => control.Text == text["Settings.ChooseFont"]);
+                    var clearHotkeyButton = AllControls(settings).OfType<Button>()
+                        .Single(control => control.Text == text["Settings.ShowAppHotkeyClear"]);
+                    Equal(chooseFontButton.Width, clearHotkeyButton.Width,
+                        "Clear Hotkey and Choose Font buttons have equal lengths");
                     var generalPage = settingsTabs.TabPages.Cast<TabPage>()
                         .Single(page => page.Text == text["Settings.Tab.General"]);
                     var generalContentBottom = AllControls(generalPage).Where(control => control != generalPage)

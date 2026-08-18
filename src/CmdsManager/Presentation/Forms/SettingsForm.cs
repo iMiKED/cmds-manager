@@ -13,6 +13,7 @@ namespace CmdsManager.Presentation.Forms
 {
     public sealed class SettingsForm : Form
     {
+        private const int InlineActionButtonWidth = 88;
         private readonly LocalizationService _text;
         private readonly CheckBox _startWithWindows = new FluentCheckBox();
         private readonly CheckBox _startMinimized = new FluentCheckBox();
@@ -99,7 +100,8 @@ namespace CmdsManager.Presentation.Forms
             AddRow(general, _text["Settings.Language"], _language);
             AddRow(general, _text["Settings.Theme"], _theme);
             AddRow(general, _text["Settings.ConsoleFont"], WithFontButton());
-            AddFullRow(general, WithShowAppHotkey());
+            AddFullRow(general, _showAppHotkeyEnabled);
+            AddRow(general, string.Empty, WithShowAppHotkeyButton());
             AddRow(general, string.Empty, _startWithWindows);
             AddRow(general, string.Empty, _startMinimized);
             AddRow(general, string.Empty, _autoStartScripts);
@@ -251,8 +253,10 @@ namespace CmdsManager.Presentation.Forms
         {
             _fontDisplay.Dock = DockStyle.Fill;
             _fontDisplay.Margin = Padding.Empty;
+            _fontDisplay.MinimumSize = _showAppHotkey.MinimumSize;
             var panel = TwoColumnPanel();
-            var choose = new FluentButton { Text = _text["Settings.ChooseFont"], AutoSize = true, Margin = new Padding(5, 0, 0, 0) };
+            var choose = new FluentButton { Text = _text["Settings.ChooseFont"] };
+            ConfigureInlineActionButton(choose);
             choose.Click += (sender, args) =>
             {
                 Font current;
@@ -272,29 +276,22 @@ namespace CmdsManager.Presentation.Forms
             return panel;
         }
 
-        private Control WithShowAppHotkey()
+        private Control WithShowAppHotkeyButton()
         {
-            var panel = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoSize = true,
-                ColumnCount = 3,
-                Margin = Padding.Empty
-            };
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            _showAppHotkeyEnabled.AutoSize = true;
-            _showAppHotkeyEnabled.Anchor = AnchorStyles.Left;
-            _showAppHotkeyEnabled.Margin = new Padding(0, 5, 8, 0);
             _showAppHotkey.Dock = DockStyle.Fill;
             _showAppHotkey.Margin = Padding.Empty;
-            _showAppHotkeyClear.AutoSize = true;
-            _showAppHotkeyClear.Margin = new Padding(5, 0, 0, 0);
-            panel.Controls.Add(_showAppHotkeyEnabled, 0, 0);
-            panel.Controls.Add(_showAppHotkey, 1, 0);
-            panel.Controls.Add(_showAppHotkeyClear, 2, 0);
+            ConfigureInlineActionButton(_showAppHotkeyClear);
+            var panel = TwoColumnPanel();
+            panel.Controls.Add(_showAppHotkey, 0, 0);
+            panel.Controls.Add(_showAppHotkeyClear, 1, 0);
             return panel;
+        }
+
+        private static void ConfigureInlineActionButton(FluentButton button)
+        {
+            button.AutoSize = false;
+            button.Size = new Size(InlineActionButtonWidth, 29);
+            button.Margin = new Padding(5, 0, 0, 0);
         }
 
         private void UpdateShowAppHotkeyState()
