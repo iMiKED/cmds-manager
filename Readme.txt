@@ -1,4 +1,4 @@
-CMDS MANAGER 1.1.0
+CMDS MANAGER 1.1.1
 ==================
 
 Website: https://github.com/iMiKED/cmds-manager
@@ -163,6 +163,14 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 ------------------
 
 The history below is derived from the Git commits of the application.
+
+1.1.1 - 19.08.2026
+- Added the configurable global Show App Hotkey with a Fluent capture field;
+- made the hotkey always show and activate Cmds Manager without hiding an
+  already visible window;
+- retained the previous registration when a new combination is already used
+  by Windows or another application;
+- advanced the INI schema to version 10 with automatic migration.
 
 1.1.0 - 18.08.2026
 - Added a configurable console history buffer size;
@@ -632,6 +640,15 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 -----------------
 
 История составлена по Git-коммитам приложения.
+
+1.1.1 — 19.08.2026
+- Добавлен настраиваемый глобальный хоткей «Показать приложение» с Fluent-полем
+  захвата сочетания;
+- хоткей всегда показывает и активирует Cmds Manager, не скрывая уже видимое
+  окно;
+- если новое сочетание занято Windows или другой программой, сохраняется
+  предыдущая регистрация;
+- схема INI обновлена до версии 10 с автоматической миграцией.
 
 1.1.0 — 18.08.2026
 - Добавлена настройка размера отображаемого буфера консоли;
