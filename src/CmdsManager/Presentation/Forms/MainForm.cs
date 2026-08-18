@@ -167,18 +167,33 @@ namespace CmdsManager.Presentation.Forms
 
         public void ShowFromTray()
         {
-            if (WindowState == FormWindowState.Minimized)
-                WindowState = _lastNonMinimizedWindowState == FormWindowState.Maximized
-                    ? FormWindowState.Maximized
-                    : FormWindowState.Normal;
-            Show();
+            var targetState = WindowState == FormWindowState.Maximized ||
+                _lastNonMinimizedWindowState == FormWindowState.Maximized
+                ? FormWindowState.Maximized
+                : FormWindowState.Normal;
+            _restoringWindowPlacement = true;
+            try
+            {
+                Show();
+                if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+                if (!Visible) Show();
+                EnsureRestoredWindowOnScreen();
+                if (WindowState != targetState) WindowState = targetState;
+                if (!Visible) Show();
+            }
+            finally
+            {
+                _restoringWindowPlacement = false;
+            }
+
             Activate();
             BringToFront();
+            ScheduleWindowPlacementSave();
         }
 
         public void ToggleFromTray()
         {
-            if (Visible && WindowState != FormWindowState.Minimized) Hide();
+            if (Visible && WindowState != FormWindowState.Minimized && IsWindowOnScreen(Bounds)) Hide();
             else ShowFromTray();
         }
 
@@ -934,11 +949,51 @@ namespace CmdsManager.Presentation.Forms
             return new Rectangle(x, y, width, height);
         }
 
+        private void EnsureRestoredWindowOnScreen()
+        {
+            var normalBounds = WindowState == FormWindowState.Maximized ? RestoreBounds : Bounds;
+            if (IsWindowOnScreen(normalBounds)) return;
+
+            var settings = Configuration.Application;
+            Rectangle requested;
+            if (settings.MainWindowPlacementSaved)
+            {
+                requested = new Rectangle(settings.MainWindowX, settings.MainWindowY,
+                    settings.MainWindowWidth, settings.MainWindowHeight);
+            }
+            else
+            {
+                var workingArea = Screen.PrimaryScreen.WorkingArea;
+                var width = Math.Min(Math.Max(MinimumSize.Width, Width), workingArea.Width);
+                var height = Math.Min(Math.Max(MinimumSize.Height, Height), workingArea.Height);
+                requested = new Rectangle(
+                    workingArea.Left + Math.Max(0, (workingArea.Width - width) / 2),
+                    workingArea.Top + Math.Max(0, (workingArea.Height - height) / 2),
+                    width, height);
+            }
+
+            if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+            Bounds = KeepWindowOnScreen(requested);
+        }
+
+        private static bool IsWindowOnScreen(Rectangle bounds)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0) return false;
+            var requiredWidth = Math.Min(120, bounds.Width);
+            var requiredHeight = Math.Min(40, bounds.Height);
+            return Screen.AllScreens.Any(screen =>
+            {
+                var intersection = Rectangle.Intersect(screen.WorkingArea, bounds);
+                return intersection.Width >= requiredWidth && intersection.Height >= requiredHeight;
+            });
+        }
+
         private void CaptureWindowPlacement()
         {
             if (!_windowPlacementReady || _restoringWindowPlacement) return;
             var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
-            if (bounds.Width < MinimumSize.Width || bounds.Height < MinimumSize.Height) return;
+            if (bounds.Width < MinimumSize.Width || bounds.Height < MinimumSize.Height ||
+                !IsWindowOnScreen(bounds)) return;
 
             var settings = Configuration.Application;
             settings.MainWindowPlacementSaved = true;

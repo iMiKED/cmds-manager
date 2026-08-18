@@ -167,7 +167,9 @@ The history below is derived from the Git commits of the application.
 - added separate UTF-8 recording for each console with automatic start,
   pause/resume, stop, retention, and a hard per-file size limit;
 - added Ctrl+F search with next/previous navigation and match-case support;
-- added Scroll Lock for freezing the console viewport.
+- added Scroll Lock for freezing the console viewport;
+- prevented tray restore from leaving the main window at Windows' invisible
+  minimized position and stopped invalid off-screen geometry from being saved.
 
 1.0.0 - 17.08.2026
 - Added the Built on date and time, evenly aligned information rows, author,
@@ -618,7 +620,9 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 - добавлена отдельная UTF-8-запись каждой консоли с автоматическим запуском,
   паузой/продолжением, остановкой, сроком хранения и жёстким лимитом файла;
 - добавлен поиск Ctrl+F с переходом вперёд/назад и учётом регистра;
-- добавлен Scroll Lock для фиксации позиции просмотра.
+- добавлен Scroll Lock для фиксации позиции просмотра;
+- исправлено восстановление из трея: служебная невидимая позиция свёрнутого
+  окна Windows больше не сохраняется, а потерянное окно возвращается на экран.
 
 1.0.0 — 17.08.2026
 - В окно «О программе» добавлены строка Built on с датой и временем сборки,

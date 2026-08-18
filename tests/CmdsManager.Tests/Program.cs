@@ -1414,6 +1414,40 @@ namespace CmdsManager.Tests
                         TimeSpan.FromSeconds(2)) && Math.Abs(form.Left - movedBounds.Left) <= 2 &&
                         Math.Abs(form.Top - movedBounds.Top) <= 2,
                         "restoring the main window preserves its normal bounds and state");
+
+                    var lostBounds = new Rectangle(-32000, -32000, movedBounds.Width, movedBounds.Height);
+                    form.Bounds = lostBounds;
+                    System.Windows.Forms.Application.DoEvents();
+                    typeof(MainForm).GetMethod("HandleWindowResizeEnd",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                        .Invoke(form, new object[] { form, EventArgs.Empty });
+                    typeof(MainForm).GetMethod("HandleLayoutSaveTimer",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                        .Invoke(form, new object[] { form, EventArgs.Empty });
+                    var placementAfterInvalidBounds = store.Reload().Application;
+                    Assert(placementAfterInvalidBounds.MainWindowX != lostBounds.X &&
+                        placementAfterInvalidBounds.MainWindowY != lostBounds.Y,
+                        "the Windows minimized sentinel position is never persisted as normal window placement");
+
+                    form.ToggleFromTray();
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(form.Visible && form.WindowState == FormWindowState.Normal &&
+                        Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(form.Bounds)),
+                        "a tray click recovers a visible window stranded at the Windows minimized sentinel");
+
+                    form.WindowState = FormWindowState.Maximized;
+                    System.Windows.Forms.Application.DoEvents();
+                    form.WindowState = FormWindowState.Minimized;
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(!form.Visible, "minimizing the main window hides it in the tray");
+                    form.ShowFromTray();
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(form.Visible && form.WindowState == FormWindowState.Maximized &&
+                        Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(form.Bounds)),
+                        "restoring from the tray preserves maximized state and returns the window on screen");
+                    form.WindowState = FormWindowState.Normal;
+                    System.Windows.Forms.Application.DoEvents();
+
                     var split = FindControl<SplitContainer>(form);
                     Assert(split != null && split.FixedPanel == FixedPanel.Panel2,
                         "console pane keeps its configured height when the main window is resized");

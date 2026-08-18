@@ -87,6 +87,8 @@ If you like Cmds Manager or it saves you time, you can support the author:
 - Close the main window to the tray or exit explicitly
 - Start Cmds Manager with Windows for the current user
 - Save main-window position, size, maximized state, and console-pane height
+- Recover the main window automatically if Windows leaves it at an invisible
+  minimized sentinel position or a saved monitor is no longer available
 - Choose System, Light, or Dark Fluent Compact themes
 - Use English or Russian interface strings stored in the INI file
 - View version, build time, author, license, website, and donation links in About
