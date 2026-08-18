@@ -351,7 +351,7 @@ namespace CmdsManager.Tests
                 @"..\..\..\..\Readme.txt"));
             Assert(File.Exists(readmePath), "release Readme.txt exists at the repository root");
             var guide = File.ReadAllText(readmePath, Encoding.UTF8);
-            Assert(guide.StartsWith("CMDS MANAGER 1.1.1", StringComparison.Ordinal),
+            Assert(guide.StartsWith("CMDS MANAGER 1.1.2", StringComparison.Ordinal),
                 "user guide identifies the stable release");
             foreach (var heading in new[]
             {
@@ -365,7 +365,7 @@ namespace CmdsManager.Tests
 
             foreach (var version in new[]
             {
-                "1.1.1", "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
+                "1.1.2", "1.1.1", "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
                 "0.5.1", "0.5.0", "0.4.2", "0.4.1", "0.4.0", "0.3.0", "0.2.1", "0.2.0", "0.1.0-dev"
             })
             {
@@ -929,7 +929,7 @@ namespace CmdsManager.Tests
                         "embedded 128 px PNG icon frame is decoded without pixel corruption");
                     var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "Cmds Manager");
                     var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
-                    Equal("Version 1.1.1", aboutVersion.Text, "About contains the stable release version");
+                    Equal("Version 1.1.2", aboutVersion.Text, "About contains the stable release version");
                     var aboutBuild = AllControls(about).OfType<Label>()
                         .First(control => control.Text.StartsWith("Built on: ", StringComparison.Ordinal));
                     DateTime parsedBuildTimestamp;
@@ -1440,7 +1440,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 1.1.1", form.Text,
+                    Equal("Cmds Manager 1.1.2", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");

@@ -1,4 +1,4 @@
-CMDS MANAGER 1.1.1
+CMDS MANAGER 1.1.2
 ==================
 
 Website: https://github.com/iMiKED/cmds-manager
@@ -163,6 +163,13 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 ------------------
 
 The history below is derived from the Git commits of the application.
+
+1.1.2 - 19.08.2026
+- Aligned the Show App Hotkey field with the other settings inputs;
+- matched its length to the Console Font field and matched the Clear button to
+  the Choose Font button;
+- prefilled the disabled-by-default hotkey with Ctrl+Alt+M;
+- advanced the INI schema to version 11 and migrated empty legacy hotkeys.
 
 1.1.1 - 19.08.2026
 - Added the configurable global Show App Hotkey with a Fluent capture field;
@@ -641,6 +648,13 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 -----------------
 
 История составлена по Git-коммитам приложения.
+
+1.1.2 — 19.08.2026
+- Поле хоткея «Показать приложение» выровнено с остальными инпутами настроек;
+- его длина приведена к длине поля «Шрифт консоли», а кнопка «Очистить» — к
+  длине кнопки «Выбрать…»;
+- в выключенный по умолчанию хоткей предварительно подставлено Ctrl+Alt+M;
+- схема INI обновлена до версии 11 с миграцией пустых старых значений хоткея.
 
 1.1.1 — 19.08.2026
 - Добавлен настраиваемый глобальный хоткей «Показать приложение» с Fluent-полем
