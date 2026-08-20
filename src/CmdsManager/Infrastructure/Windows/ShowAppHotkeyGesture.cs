@@ -33,9 +33,15 @@ namespace CmdsManager.Infrastructure.Windows
 
         public static bool TryCreate(Keys keyCode, ShowAppHotkeyModifiers modifiers, out ShowAppHotkeyGesture gesture)
         {
+            return TryCreate(keyCode, modifiers, true, out gesture);
+        }
+
+        public static bool TryCreate(Keys keyCode, ShowAppHotkeyModifiers modifiers, bool requireModifier,
+            out ShowAppHotkeyGesture gesture)
+        {
             gesture = null;
             keyCode &= Keys.KeyCode;
-            if (modifiers == ShowAppHotkeyModifiers.None ||
+            if ((requireModifier && modifiers == ShowAppHotkeyModifiers.None) ||
                 (modifiers & ~(ShowAppHotkeyModifiers.Alt | ShowAppHotkeyModifiers.Control |
                     ShowAppHotkeyModifiers.Shift | ShowAppHotkeyModifiers.Win)) != 0 ||
                 !KeysToNames.ContainsKey(keyCode))
@@ -48,6 +54,11 @@ namespace CmdsManager.Infrastructure.Windows
         }
 
         public static bool TryParse(string value, out ShowAppHotkeyGesture gesture)
+        {
+            return TryParse(value, true, out gesture);
+        }
+
+        public static bool TryParse(string value, bool requireModifier, out ShowAppHotkeyGesture gesture)
         {
             gesture = null;
             if (string.IsNullOrWhiteSpace(value) || value.Length > 80) return false;
@@ -71,7 +82,20 @@ namespace CmdsManager.Infrastructure.Windows
                 keyCode = parsedKey;
             }
 
-            return TryCreate(keyCode, modifiers, out gesture);
+            return TryCreate(keyCode, modifiers, requireModifier, out gesture);
+        }
+
+        public bool Matches(Keys keyData)
+        {
+            if ((keyData & Keys.KeyCode) != KeyCode) return false;
+            var actual = ShowAppHotkeyModifiers.None;
+            if ((keyData & Keys.Control) == Keys.Control) actual |= ShowAppHotkeyModifiers.Control;
+            if ((keyData & Keys.Alt) == Keys.Alt) actual |= ShowAppHotkeyModifiers.Alt;
+            if ((keyData & Keys.Shift) == Keys.Shift) actual |= ShowAppHotkeyModifiers.Shift;
+            if ((NativeMethods.GetKeyState((int)Keys.LWin) & 0x8000) != 0 ||
+                (NativeMethods.GetKeyState((int)Keys.RWin) & 0x8000) != 0)
+                actual |= ShowAppHotkeyModifiers.Win;
+            return actual == Modifiers;
         }
 
         public bool Equals(ShowAppHotkeyGesture other)
@@ -142,6 +166,9 @@ namespace CmdsManager.Infrastructure.Windows
             Add(result, "Space", Keys.Space);
             Add(result, "Enter", Keys.Enter);
             Add(result, "Tab", Keys.Tab);
+            Add(result, "Backspace", Keys.Back);
+            Add(result, "Delete", Keys.Delete);
+            Add(result, "Escape", Keys.Escape);
             Add(result, "Insert", Keys.Insert);
             Add(result, "Home", Keys.Home);
             Add(result, "End", Keys.End);
@@ -153,6 +180,11 @@ namespace CmdsManager.Infrastructure.Windows
             Add(result, "Right", Keys.Right);
             Add(result, "Pause", Keys.Pause);
             Add(result, "PrintScreen", Keys.PrintScreen);
+            Add(result, "ScrollLock", Keys.Scroll);
+            Add(result, "Comma", Keys.Oemcomma);
+            Add(result, "Period", Keys.OemPeriod);
+            Add(result, "Minus", Keys.OemMinus);
+            Add(result, "Plus", Keys.Oemplus);
             Add(result, "Num0", Keys.NumPad0);
             Add(result, "Num1", Keys.NumPad1);
             Add(result, "Num2", Keys.NumPad2);

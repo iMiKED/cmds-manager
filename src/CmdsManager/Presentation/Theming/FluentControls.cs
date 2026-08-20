@@ -496,11 +496,13 @@ namespace CmdsManager.Presentation.Theming
             set
             {
                 ShowAppHotkeyGesture parsed;
-                _editor.Text = ShowAppHotkeyGesture.TryParse(value, out parsed)
+                _editor.Text = ShowAppHotkeyGesture.TryParse(value, RequireModifier, out parsed)
                     ? parsed.ToString()
                     : (value ?? string.Empty).Trim();
             }
         }
+
+        internal bool RequireModifier { get; set; } = true;
 
         internal event EventHandler GestureChanged;
 
@@ -575,7 +577,7 @@ namespace CmdsManager.Presentation.Theming
             args.Handled = true;
             args.SuppressKeyPress = true;
 
-            if (args.KeyCode == Keys.Back || args.KeyCode == Keys.Delete || args.KeyCode == Keys.Escape)
+            if (args.KeyCode == Keys.Back || args.KeyCode == Keys.Escape)
             {
                 ClearGesture();
                 return;
@@ -588,7 +590,7 @@ namespace CmdsManager.Presentation.Theming
             if (IsPressed(Keys.LWin) || IsPressed(Keys.RWin)) modifiers |= ShowAppHotkeyModifiers.Win;
 
             ShowAppHotkeyGesture gesture;
-            if (!ShowAppHotkeyGesture.TryCreate(args.KeyCode, modifiers, out gesture)) return;
+            if (!ShowAppHotkeyGesture.TryCreate(args.KeyCode, modifiers, RequireModifier, out gesture)) return;
             if (string.Equals(_editor.Text, gesture.ToString(), StringComparison.Ordinal)) return;
             _editor.Text = gesture.ToString();
             _editor.SelectAll();

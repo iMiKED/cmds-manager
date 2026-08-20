@@ -52,6 +52,138 @@ namespace CmdsManager.Domain
         Dark
     }
 
+    public enum HotkeyAction
+    {
+        ShowApp,
+        QuickLaunch,
+        EmergencyStopAll,
+        StartSelected,
+        StopSelected,
+        RestartSelected,
+        AddScript,
+        EditScript,
+        DeleteScript,
+        OpenSettings,
+        NextConsoleTab,
+        PreviousConsoleTab,
+        CloseConsoleTab,
+        ToggleConsoleDetach,
+        ToggleConsolePane,
+        FindConsole,
+        FindNext,
+        FindPrevious,
+        ToggleScrollLock,
+        ToggleConsoleFullScreen,
+        ToggleWordWrap,
+        ClearConsole,
+        CopyConsoleSelection,
+        SelectAllConsole,
+        SaveConsole,
+        IncreaseConsoleFont,
+        DecreaseConsoleFont,
+        ResetConsoleFont
+    }
+
+    public enum HotkeyScope
+    {
+        Global,
+        Application,
+        Console
+    }
+
+    public sealed class HotkeyBinding
+    {
+        public bool Enabled { get; set; }
+        public string Gesture { get; set; } = string.Empty;
+
+        public HotkeyBinding Clone()
+        {
+            return (HotkeyBinding)MemberwiseClone();
+        }
+    }
+
+    public sealed class HotkeySettings
+    {
+        private readonly Dictionary<HotkeyAction, HotkeyBinding> _bindings =
+            new Dictionary<HotkeyAction, HotkeyBinding>();
+
+        public HotkeySettings()
+        {
+            foreach (HotkeyAction action in Enum.GetValues(typeof(HotkeyAction)))
+                _bindings[action] = CreateDefaultBinding(action);
+        }
+
+        public HotkeyBinding this[HotkeyAction action]
+        {
+            get { return _bindings[action]; }
+            set { _bindings[action] = value ?? CreateDefaultBinding(action); }
+        }
+
+        public IEnumerable<KeyValuePair<HotkeyAction, HotkeyBinding>> Bindings => _bindings;
+
+        public HotkeySettings Clone()
+        {
+            var clone = new HotkeySettings();
+            foreach (var pair in _bindings) clone[pair.Key] = pair.Value?.Clone();
+            return clone;
+        }
+
+        public static HotkeyBinding CreateDefaultBinding(HotkeyAction action)
+        {
+            return new HotkeyBinding
+            {
+                Enabled = GetScope(action) != HotkeyScope.Global,
+                Gesture = DefaultGesture(action)
+            };
+        }
+
+        public static HotkeyScope GetScope(HotkeyAction action)
+        {
+            if (action == HotkeyAction.ShowApp || action == HotkeyAction.QuickLaunch ||
+                action == HotkeyAction.EmergencyStopAll)
+                return HotkeyScope.Global;
+            if (action >= HotkeyAction.FindConsole)
+                return HotkeyScope.Console;
+            return HotkeyScope.Application;
+        }
+
+        public static string DefaultGesture(HotkeyAction action)
+        {
+            switch (action)
+            {
+                case HotkeyAction.ShowApp: return "Ctrl+Alt+M";
+                case HotkeyAction.QuickLaunch: return "Ctrl+Alt+Space";
+                case HotkeyAction.EmergencyStopAll: return "Ctrl+Alt+Shift+F12";
+                case HotkeyAction.StartSelected: return "F5";
+                case HotkeyAction.StopSelected: return "Shift+F5";
+                case HotkeyAction.RestartSelected: return "Ctrl+Shift+F5";
+                case HotkeyAction.AddScript: return "Ctrl+N";
+                case HotkeyAction.EditScript: return "Ctrl+E";
+                case HotkeyAction.DeleteScript: return "Delete";
+                case HotkeyAction.OpenSettings: return "Ctrl+Comma";
+                case HotkeyAction.NextConsoleTab: return "Ctrl+Tab";
+                case HotkeyAction.PreviousConsoleTab: return "Ctrl+Shift+Tab";
+                case HotkeyAction.CloseConsoleTab: return "Ctrl+W";
+                case HotkeyAction.ToggleConsoleDetach: return "Ctrl+Shift+D";
+                case HotkeyAction.ToggleConsolePane: return "Ctrl+Shift+M";
+                case HotkeyAction.FindConsole: return "Ctrl+F";
+                case HotkeyAction.FindNext: return "F3";
+                case HotkeyAction.FindPrevious: return "Shift+F3";
+                case HotkeyAction.ToggleScrollLock: return "ScrollLock";
+                case HotkeyAction.ToggleConsoleFullScreen: return "F11";
+                case HotkeyAction.ToggleWordWrap: return "Alt+Z";
+                case HotkeyAction.ClearConsole: return "Ctrl+L";
+                case HotkeyAction.CopyConsoleSelection: return "Ctrl+C";
+                case HotkeyAction.SelectAllConsole: return "Ctrl+A";
+                case HotkeyAction.SaveConsole: return "Ctrl+S";
+                case HotkeyAction.IncreaseConsoleFont: return "Ctrl+Shift+Plus";
+                case HotkeyAction.DecreaseConsoleFont: return "Ctrl+Minus";
+                case HotkeyAction.ResetConsoleFont: return "Ctrl+0";
+                default: return string.Empty;
+            }
+        }
+    }
+
     public sealed class LaunchProfile
     {
         public ScriptInterpreter Interpreter { get; set; } = ScriptInterpreter.Auto;
@@ -92,7 +224,7 @@ namespace CmdsManager.Domain
 
     public sealed class ApplicationSettings
     {
-        public int ConfigVersion { get; set; } = 11;
+        public int ConfigVersion { get; set; } = 12;
         public ApplicationTheme Theme { get; set; } = ApplicationTheme.System;
         public bool CloseToTray { get; set; } = true;
         public bool StartMinimized { get; set; }
@@ -100,8 +232,17 @@ namespace CmdsManager.Domain
         public bool StartHiddenWhenAutoStarted { get; set; } = true;
         public bool AutoStartScripts { get; set; } = true;
         public bool ConfirmBeforeDelete { get; set; } = true;
-        public bool ShowAppHotkeyEnabled { get; set; }
-        public string ShowAppHotkey { get; set; } = "Ctrl+Alt+M";
+        public HotkeySettings Hotkeys { get; set; } = new HotkeySettings();
+        public bool ShowAppHotkeyEnabled
+        {
+            get { return Hotkeys[HotkeyAction.ShowApp].Enabled; }
+            set { Hotkeys[HotkeyAction.ShowApp].Enabled = value; }
+        }
+        public string ShowAppHotkey
+        {
+            get { return Hotkeys[HotkeyAction.ShowApp].Gesture; }
+            set { Hotkeys[HotkeyAction.ShowApp].Gesture = value ?? string.Empty; }
+        }
         public bool MainWindowPlacementSaved { get; set; }
         public int MainWindowX { get; set; }
         public int MainWindowY { get; set; }
@@ -131,7 +272,9 @@ namespace CmdsManager.Domain
 
         public ApplicationSettings Clone()
         {
-            return (ApplicationSettings)MemberwiseClone();
+            var clone = (ApplicationSettings)MemberwiseClone();
+            clone.Hotkeys = Hotkeys?.Clone() ?? new HotkeySettings();
+            return clone;
         }
     }
 

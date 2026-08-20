@@ -77,7 +77,8 @@ namespace CmdsManager.Presentation.Forms
             _showAppHotkey = showAppHotkey ?? throw new ArgumentNullException(nameof(showAppHotkey));
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _text = text ?? throw new ArgumentNullException(nameof(text));
-            _console = new ConsoleTabsControl(_text, () => Configuration.Application, ResolveConsoleWordWrap,
+            _console = new ConsoleTabsControl(_text, () => Configuration.Application,
+                () => Configuration.Application.Hotkeys, ResolveConsoleWordWrap,
                 Path.Combine(Path.GetDirectoryName(_store.ConfigPath) ?? AppDomain.CurrentDomain.BaseDirectory,
                     "logs", "console"))
                 { Dock = DockStyle.Fill };
@@ -149,7 +150,6 @@ namespace CmdsManager.Presentation.Forms
             _layoutSaveTimer.Tick += HandleLayoutSaveTimer;
             FormClosing += HandleFormClosing;
             Shown += HandleMainShown;
-            KeyDown += HandleMainKeyDown;
             Resize += HandleMainResize;
             ResizeEnd += HandleWindowResizeEnd;
 
@@ -267,6 +267,25 @@ namespace CmdsManager.Presentation.Forms
         public void ShowAbout()
         {
             using (var form = new AboutForm(_text, Configuration.Application.Theme)) form.ShowDialog(this);
+        }
+
+        public void ShowQuickLauncher()
+        {
+            if (IsDisposed) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke((Action)ShowQuickLauncher);
+                return;
+            }
+
+            using (var form = new QuickLaunchForm(Configuration.Scripts, _text, Configuration.Application.Theme))
+            {
+                var result = Visible && WindowState != FormWindowState.Minimized
+                    ? form.ShowDialog(this)
+                    : form.ShowDialog();
+                if (result == DialogResult.OK && form.SelectedScriptId != Guid.Empty)
+                    RunScript(form.SelectedScriptId.ToString("D"));
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -495,6 +514,23 @@ namespace CmdsManager.Presentation.Forms
             catch (Exception exception) { ShowError(_text.Get("Main.StopFailed", selected.Name), exception); }
         }
 
+        private async Task RestartSelectedAsync()
+        {
+            var selected = SelectedScript;
+            if (selected == null) return;
+            try
+            {
+                if (_supervisor.IsRunning(selected.Id)) await _supervisor.StopAsync(selected.Id);
+                var current = Configuration.Scripts.FirstOrDefault(item => item.Id == selected.Id);
+                if (current == null || !current.Enabled) return;
+                _supervisor.Start(current, Configuration.PowerShell7Path);
+            }
+            catch (Exception exception)
+            {
+                ShowError(_text.Get("Main.RestartFailed", selected.Name), exception);
+            }
+        }
+
         private void EditSelectedFile()
         {
             var selected = SelectedScript;
@@ -582,7 +618,8 @@ namespace CmdsManager.Presentation.Forms
             return registration == null
                 ? exception
                 : new InvalidOperationException(
-                    _text.Get("Settings.ShowAppHotkeyUnavailable", registration.Gesture), registration);
+                    _text.Get("Settings.GlobalHotkeyUnavailable",
+                        _text["Hotkey." + registration.Action], registration.Gesture), registration);
         }
 
         private void SaveConfiguration(AppConfiguration candidate)
@@ -745,14 +782,45 @@ namespace CmdsManager.Presentation.Forms
                 : scriptId;
         }
 
-        private void HandleMainKeyDown(object sender, KeyEventArgs args)
+        protected override bool ProcessCmdKey(ref Message message, Keys keyData)
         {
-            if (args.KeyCode != Keys.F11) return;
-            if (_console.ToggleSelectedTabFullScreen())
+            if (TryHandleApplicationHotkey(keyData)) return true;
+            return base.ProcessCmdKey(ref message, keyData);
+        }
+
+        private bool TryHandleApplicationHotkey(Keys keyData)
+        {
+            if (_filter.TextBox.Focused && (keyData & Keys.KeyCode) == Keys.Delete &&
+                (keyData & Keys.Modifiers) == Keys.None)
+                return false;
+
+            if (MatchesHotkey(HotkeyAction.StartSelected, keyData)) { StartSelected(); return true; }
+            if (MatchesHotkey(HotkeyAction.StopSelected, keyData)) { _ = StopSelectedAsync(); return true; }
+            if (MatchesHotkey(HotkeyAction.RestartSelected, keyData)) { _ = RestartSelectedAsync(); return true; }
+            if (MatchesHotkey(HotkeyAction.AddScript, keyData)) { AddScript(); return true; }
+            if (MatchesHotkey(HotkeyAction.EditScript, keyData)) { EditSelected(); return true; }
+            if (MatchesHotkey(HotkeyAction.DeleteScript, keyData)) { _ = DeleteSelectedAsync(); return true; }
+            if (MatchesHotkey(HotkeyAction.OpenSettings, keyData)) { OpenSettings(); return true; }
+            if (MatchesHotkey(HotkeyAction.NextConsoleTab, keyData)) return _console.SelectAdjacentTab(1);
+            if (MatchesHotkey(HotkeyAction.PreviousConsoleTab, keyData)) return _console.SelectAdjacentTab(-1);
+            if (MatchesHotkey(HotkeyAction.CloseConsoleTab, keyData)) return _console.CloseActiveTab();
+            if (MatchesHotkey(HotkeyAction.ToggleConsoleDetach, keyData)) return _console.ToggleActiveTabDetached();
+            if (MatchesHotkey(HotkeyAction.ToggleConsolePane, keyData))
             {
-                args.Handled = true;
-                args.SuppressKeyPress = true;
+                ToggleConsolePaneMaximized();
+                return true;
             }
+            if (MatchesHotkey(HotkeyAction.ToggleConsoleFullScreen, keyData))
+                return _console.ToggleSelectedTabFullScreen();
+            return false;
+        }
+
+        private bool MatchesHotkey(HotkeyAction action, Keys keyData)
+        {
+            var binding = Configuration.Application.Hotkeys[action];
+            if (!binding.Enabled) return false;
+            ShowAppHotkeyGesture gesture;
+            return ShowAppHotkeyGesture.TryParse(binding.Gesture, false, out gesture) && gesture.Matches(keyData);
         }
 
         private void HandleMainResize(object sender, EventArgs args)

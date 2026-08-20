@@ -322,12 +322,12 @@ namespace CmdsManager.Presentation.Controls
         {
             base.OnKeyDown(args);
             if (_items.Count == 0) return;
-            if (args.KeyCode == Keys.Left || (args.Control && args.KeyCode == Keys.Tab && args.Shift))
+            if (args.KeyCode == Keys.Left)
             {
                 SelectIndex((_selectedIndex - 1 + _items.Count) % _items.Count);
                 args.Handled = true;
             }
-            else if (args.KeyCode == Keys.Right || (args.Control && args.KeyCode == Keys.Tab))
+            else if (args.KeyCode == Keys.Right)
             {
                 SelectIndex((_selectedIndex + 1) % _items.Count);
                 args.Handled = true;

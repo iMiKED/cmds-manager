@@ -32,6 +32,7 @@ namespace CmdsManager.Presentation.Tray
         private readonly ToolStripMenuItem _exit = new ToolStripMenuItem();
         private bool _exiting;
         private bool _disposed;
+        private bool _emergencyStopInProgress;
         private int _lastTrayClickTick;
 
         public CmdsApplicationContext(MainForm mainForm, ProcessSupervisor supervisor, ConfigurationState state,
@@ -68,6 +69,8 @@ namespace CmdsManager.Presentation.Tray
             _tray.MouseClick += HandleTrayClick;
             _mainForm.ExitRequested += async (sender, args) => await ExitApplicationAsync();
             _showAppHotkey.Pressed += HandleShowAppHotkeyPressed;
+            _showAppHotkey.QuickLaunchPressed += HandleQuickLaunchHotkeyPressed;
+            _showAppHotkey.EmergencyStopAllPressed += HandleEmergencyStopAllHotkeyPressed;
 
             try
             {
@@ -75,10 +78,11 @@ namespace CmdsManager.Presentation.Tray
             }
             catch (ShowAppHotkeyRegistrationException exception)
             {
-                _log.Warning("Unable to register Show App Hotkey '" + exception.Gesture + "'. Win32 error " +
+                _log.Warning("Unable to register global hotkey '" + exception.Gesture + "'. Win32 error " +
                     exception.NativeErrorCode + ".");
                 _tray.ShowBalloonTip(5000, ApplicationResources.DisplayName,
-                    _text.Get("Tray.ShowAppHotkeyFailed", exception.Gesture), ToolTipIcon.Warning);
+                    _text.Get("Tray.GlobalHotkeyFailed", _text["Hotkey." + exception.Action], exception.Gesture),
+                    ToolTipIcon.Warning);
             }
 
             var handle = _mainForm.Handle;
@@ -154,6 +158,8 @@ namespace CmdsManager.Presentation.Tray
                 _text.Changed -= HandleLocalizationChanged;
                 SystemEvents.UserPreferenceChanged -= HandleSystemPreferenceChanged;
                 _showAppHotkey.Pressed -= HandleShowAppHotkeyPressed;
+                _showAppHotkey.QuickLaunchPressed -= HandleQuickLaunchHotkeyPressed;
+                _showAppHotkey.EmergencyStopAllPressed -= HandleEmergencyStopAllHotkeyPressed;
                 _tray.Visible = false;
                 _tray.Dispose();
                 if (!_mainForm.IsDisposed)
@@ -177,6 +183,28 @@ namespace CmdsManager.Presentation.Tray
         private void HandleShowAppHotkeyPressed(object sender, EventArgs args)
         {
             ActivateFromAnotherInstance();
+        }
+
+        private void HandleQuickLaunchHotkeyPressed(object sender, EventArgs args)
+        {
+            if (_mainForm.IsDisposed || !_mainForm.IsHandleCreated) return;
+            _mainForm.BeginInvoke((Action)_mainForm.ShowQuickLauncher);
+        }
+
+        private async void HandleEmergencyStopAllHotkeyPressed(object sender, EventArgs args)
+        {
+            if (_emergencyStopInProgress || _exiting) return;
+            _emergencyStopInProgress = true;
+            try
+            {
+                await _mainForm.StopAllAsync();
+                _tray.ShowBalloonTip(3000, ApplicationResources.DisplayName,
+                    _text["Tray.EmergencyStopCompleted"], ToolTipIcon.Info);
+            }
+            finally
+            {
+                _emergencyStopInProgress = false;
+            }
         }
 
         private async Task AutoStartScriptsAsync()

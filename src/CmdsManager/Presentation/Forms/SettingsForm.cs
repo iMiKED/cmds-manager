@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -14,16 +15,22 @@ namespace CmdsManager.Presentation.Forms
     public sealed class SettingsForm : Form
     {
         private const int InlineActionButtonWidth = 88;
+        private sealed class HotkeyEditorRow
+        {
+            internal CheckBox Enabled { get; set; }
+            internal FluentHotkeyBox Gesture { get; set; }
+            internal FluentButton Reset { get; set; }
+        }
+
         private readonly LocalizationService _text;
         private readonly CheckBox _startWithWindows = new FluentCheckBox();
         private readonly CheckBox _startMinimized = new FluentCheckBox();
         private readonly CheckBox _autoStartScripts = new FluentCheckBox();
         private readonly CheckBox _confirmDelete = new FluentCheckBox();
-        private readonly CheckBox _showAppHotkeyEnabled = new FluentCheckBox();
         private readonly CheckBox _logScriptOutput = new FluentCheckBox();
         private readonly CheckBox _consoleAutoRecord = new FluentCheckBox();
-        private readonly FluentHotkeyBox _showAppHotkey = new FluentHotkeyBox();
-        private readonly FluentButton _showAppHotkeyClear = new FluentButton();
+        private readonly Dictionary<HotkeyAction, HotkeyEditorRow> _hotkeyEditors =
+            new Dictionary<HotkeyAction, HotkeyEditorRow>();
         private readonly FluentTextBox _editorPath = new FluentTextBox();
         private readonly FluentTextBox _editorArguments = new FluentTextBox();
         private readonly FluentTextBox _powerShell7Path = new FluentTextBox();
@@ -83,11 +90,6 @@ namespace CmdsManager.Presentation.Forms
             _startMinimized.Text = _text["Settings.StartMinimized"];
             _autoStartScripts.Text = _text["Settings.AutoStartScripts"];
             _confirmDelete.Text = _text["Settings.ConfirmDelete"];
-            _showAppHotkeyEnabled.Text = _text["Settings.ShowAppHotkey"];
-            _showAppHotkeyEnabled.AccessibleName = _text["Settings.ShowAppHotkey"];
-            _showAppHotkey.AccessibleName = _text["Settings.ShowAppHotkey"];
-            _showAppHotkey.AccessibleDescription = _text["Settings.ShowAppHotkeyHint"];
-            _showAppHotkeyClear.Text = _text["Settings.ShowAppHotkeyClear"];
             _logScriptOutput.Text = _text["Settings.LogOutput"];
             _consoleAutoRecord.Text = _text["Settings.ConsoleAutoRecord"];
             foreach (var code in localization.Languages.Keys.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
@@ -100,8 +102,6 @@ namespace CmdsManager.Presentation.Forms
             AddRow(general, _text["Settings.Language"], _language);
             AddRow(general, _text["Settings.Theme"], _theme);
             AddRow(general, _text["Settings.ConsoleFont"], WithFontButton());
-            AddFullRow(general, _showAppHotkeyEnabled);
-            AddRow(general, string.Empty, WithShowAppHotkeyButton());
             AddRow(general, string.Empty, _startWithWindows);
             AddRow(general, string.Empty, _startMinimized);
             AddRow(general, string.Empty, _autoStartScripts);
@@ -139,8 +139,11 @@ namespace CmdsManager.Presentation.Forms
             AddRow(appearance, _text["Settings.ActiveTabBackground"], ColorWithOpacity(_activeTabBackgroundColor, _activeTabOpacity));
             AddFiller(appearance);
 
+            var hotkeys = CreateHotkeyTabs(source.Hotkeys);
+
             var tabs = new FluentTabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(Page(_text["Settings.Tab.General"], general));
+            tabs.TabPages.Add(Page(_text["Settings.Tab.Hotkeys"], hotkeys));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Console"], console));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Appearance"], appearance));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Tools"], tools));
@@ -159,16 +162,6 @@ namespace CmdsManager.Presentation.Forms
             _startMinimized.Checked = source.StartMinimized;
             _autoStartScripts.Checked = source.AutoStartScripts;
             _confirmDelete.Checked = source.ConfirmBeforeDelete;
-            _showAppHotkey.Gesture = source.ShowAppHotkey;
-            _showAppHotkeyEnabled.Checked = source.ShowAppHotkeyEnabled;
-            _showAppHotkeyEnabled.CheckedChanged += (sender, args) => UpdateShowAppHotkeyState();
-            _showAppHotkey.GestureChanged += (sender, args) => UpdateShowAppHotkeyState();
-            _showAppHotkeyClear.Click += (sender, args) =>
-            {
-                _showAppHotkey.ClearGesture();
-                _showAppHotkeyEnabled.Checked = false;
-            };
-            UpdateShowAppHotkeyState();
             _editorPath.Text = source.EditorPath;
             _editorArguments.Text = source.EditorArguments;
             _powerShell7Path.Text = powerShell7Path ?? string.Empty;
@@ -208,17 +201,11 @@ namespace CmdsManager.Presentation.Forms
                 var powerShellPath = Environment.ExpandEnvironmentVariables(_powerShell7Path.Text.Trim());
                 if (powerShellPath.Length > 0 && !File.Exists(powerShellPath) && !Directory.Exists(powerShellPath))
                     throw new FileNotFoundException(_text["Settings.PowerShellMissing"], powerShellPath);
-                ShowAppHotkeyGesture showAppHotkey = null;
-                if (_showAppHotkeyEnabled.Checked &&
-                    !ShowAppHotkeyGesture.TryParse(_showAppHotkey.Gesture, out showAppHotkey))
-                    throw new InvalidOperationException(_text["Settings.ShowAppHotkeyRequired"]);
-
                 SettingsResult.StartWithWindows = _startWithWindows.Checked;
                 SettingsResult.StartMinimized = _startMinimized.Checked;
                 SettingsResult.AutoStartScripts = _autoStartScripts.Checked;
                 SettingsResult.ConfirmBeforeDelete = _confirmDelete.Checked;
-                SettingsResult.ShowAppHotkeyEnabled = _showAppHotkeyEnabled.Checked;
-                SettingsResult.ShowAppHotkey = showAppHotkey?.ToString() ?? _showAppHotkey.Gesture;
+                SettingsResult.Hotkeys = ReadHotkeySettings();
                 SettingsResult.EditorPath = _editorPath.Text.Trim();
                 SettingsResult.EditorArguments = _editorArguments.Text.Trim();
                 SettingsResult.LogRetentionDays = decimal.ToInt32(_retention.Value);
@@ -253,7 +240,7 @@ namespace CmdsManager.Presentation.Forms
         {
             _fontDisplay.Dock = DockStyle.Fill;
             _fontDisplay.Margin = Padding.Empty;
-            _fontDisplay.MinimumSize = _showAppHotkey.MinimumSize;
+            _fontDisplay.MinimumSize = new Size(120, 29);
             var panel = TwoColumnPanel();
             var choose = new FluentButton { Text = _text["Settings.ChooseFont"] };
             ConfigureInlineActionButton(choose);
@@ -276,17 +263,6 @@ namespace CmdsManager.Presentation.Forms
             return panel;
         }
 
-        private Control WithShowAppHotkeyButton()
-        {
-            _showAppHotkey.Dock = DockStyle.Fill;
-            _showAppHotkey.Margin = Padding.Empty;
-            ConfigureInlineActionButton(_showAppHotkeyClear);
-            var panel = TwoColumnPanel();
-            panel.Controls.Add(_showAppHotkey, 0, 0);
-            panel.Controls.Add(_showAppHotkeyClear, 1, 0);
-            return panel;
-        }
-
         private static void ConfigureInlineActionButton(FluentButton button)
         {
             button.AutoSize = false;
@@ -294,10 +270,135 @@ namespace CmdsManager.Presentation.Forms
             button.Margin = new Padding(5, 0, 0, 0);
         }
 
-        private void UpdateShowAppHotkeyState()
+        private Control CreateHotkeyTabs(HotkeySettings source)
         {
-            _showAppHotkey.Enabled = _showAppHotkeyEnabled.Checked;
-            _showAppHotkeyClear.Enabled = _showAppHotkey.Gesture.Length > 0;
+            source = source?.Clone() ?? new HotkeySettings();
+            var tabs = new FluentTabControl { Dock = DockStyle.Fill };
+            tabs.TabPages.Add(Page(_text["Settings.Hotkeys.Global"], CreateHotkeyTable(source,
+                HotkeyAction.ShowApp, HotkeyAction.QuickLaunch, HotkeyAction.EmergencyStopAll)));
+            tabs.TabPages.Add(Page(_text["Settings.Hotkeys.Scripts"], CreateHotkeyTable(source,
+                HotkeyAction.StartSelected, HotkeyAction.StopSelected, HotkeyAction.RestartSelected,
+                HotkeyAction.AddScript, HotkeyAction.EditScript, HotkeyAction.DeleteScript)));
+            tabs.TabPages.Add(Page(_text["Settings.Hotkeys.Window"], CreateHotkeyTable(source,
+                HotkeyAction.OpenSettings, HotkeyAction.NextConsoleTab, HotkeyAction.PreviousConsoleTab,
+                HotkeyAction.CloseConsoleTab, HotkeyAction.ToggleConsoleDetach, HotkeyAction.ToggleConsolePane)));
+            tabs.TabPages.Add(Page(_text["Settings.Hotkeys.Console"], CreateHotkeyTable(source,
+                HotkeyAction.FindConsole, HotkeyAction.FindNext, HotkeyAction.FindPrevious,
+                HotkeyAction.ToggleScrollLock, HotkeyAction.ToggleConsoleFullScreen,
+                HotkeyAction.ToggleWordWrap, HotkeyAction.ClearConsole)));
+            tabs.TabPages.Add(Page(_text["Settings.Hotkeys.Text"], CreateHotkeyTable(source,
+                HotkeyAction.CopyConsoleSelection, HotkeyAction.SelectAllConsole, HotkeyAction.SaveConsole,
+                HotkeyAction.IncreaseConsoleFont, HotkeyAction.DecreaseConsoleFont,
+                HotkeyAction.ResetConsoleFont)));
+            return tabs;
+        }
+
+        private TableLayoutPanel CreateHotkeyTable(HotkeySettings source, params HotkeyAction[] actions)
+        {
+            var table = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(5),
+                AutoScroll = false,
+                ColumnCount = 4,
+                RowCount = 0,
+                GrowStyle = TableLayoutPanelGrowStyle.AddRows
+            };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, InlineActionButtonWidth));
+
+            foreach (var action in actions)
+            {
+                var binding = source[action] ?? HotkeySettings.CreateDefaultBinding(action);
+                var name = _text["Hotkey." + action];
+                var enabled = new FluentCheckBox
+                {
+                    AutoSize = true,
+                    Anchor = AnchorStyles.Left,
+                    Margin = new Padding(4, 5, 4, 3),
+                    Checked = binding.Enabled,
+                    AccessibleName = name
+                };
+                var label = new Label
+                {
+                    Text = name,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    AutoEllipsis = true,
+                    Margin = new Padding(2, 0, 8, 0)
+                };
+                var gesture = new FluentHotkeyBox
+                {
+                    RequireModifier = HotkeySettings.GetScope(action) == HotkeyScope.Global,
+                    Gesture = binding.Gesture,
+                    Dock = DockStyle.Fill,
+                    MinimumSize = new Size(120, 29),
+                    Margin = new Padding(0, 0, 5, 0),
+                    AccessibleName = name,
+                    AccessibleDescription = _text["Settings.HotkeyHint"]
+                };
+                var reset = new FluentButton
+                {
+                    Text = _text["Settings.HotkeyReset"],
+                    AutoSize = false,
+                    Size = new Size(InlineActionButtonWidth, 29),
+                    Anchor = AnchorStyles.Left,
+                    Margin = Padding.Empty,
+                    AccessibleName = _text.Get("Settings.HotkeyResetAccessible", name)
+                };
+                var row = new HotkeyEditorRow { Enabled = enabled, Gesture = gesture, Reset = reset };
+                _hotkeyEditors[action] = row;
+                enabled.CheckedChanged += (sender, args) => gesture.Enabled = enabled.Checked;
+                reset.Click += (sender, args) => gesture.Gesture = HotkeySettings.DefaultGesture(action);
+                gesture.Enabled = enabled.Checked;
+
+                var rowIndex = table.RowCount++;
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
+                table.Controls.Add(enabled, 0, rowIndex);
+                table.Controls.Add(label, 1, rowIndex);
+                table.Controls.Add(gesture, 2, rowIndex);
+                table.Controls.Add(reset, 3, rowIndex);
+            }
+
+            var fillerRow = table.RowCount++;
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            var filler = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+            table.Controls.Add(filler, 0, fillerRow);
+            table.SetColumnSpan(filler, 4);
+            return table;
+        }
+
+        private HotkeySettings ReadHotkeySettings()
+        {
+            var result = new HotkeySettings();
+            var used = new Dictionary<HotkeyScope, Dictionary<string, HotkeyAction>>();
+            foreach (HotkeyScope scope in Enum.GetValues(typeof(HotkeyScope)))
+                used[scope] = new Dictionary<string, HotkeyAction>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (HotkeyAction action in Enum.GetValues(typeof(HotkeyAction)))
+            {
+                var row = _hotkeyEditors[action];
+                var scope = HotkeySettings.GetScope(action);
+                ShowAppHotkeyGesture parsed;
+                if (!ShowAppHotkeyGesture.TryParse(row.Gesture.Gesture, scope == HotkeyScope.Global, out parsed))
+                    throw new InvalidOperationException(_text.Get("Settings.HotkeyRequired", _text["Hotkey." + action]));
+
+                var binding = result[action];
+                binding.Enabled = row.Enabled.Checked;
+                binding.Gesture = parsed.ToString();
+                if (!binding.Enabled) continue;
+
+                HotkeyAction duplicate;
+                if (used[scope].TryGetValue(binding.Gesture, out duplicate))
+                {
+                    throw new InvalidOperationException(_text.Get("Settings.HotkeyConflict",
+                        _text["Hotkey." + duplicate], _text["Hotkey." + action], binding.Gesture));
+                }
+                used[scope][binding.Gesture] = action;
+            }
+            return result;
         }
 
         private Control WithFileButton(FluentTextBox textBox, string filter)

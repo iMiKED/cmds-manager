@@ -13,8 +13,9 @@ namespace CmdsManager.Presentation.Forms
         private Rectangle _restoreBounds;
         private FormBorderStyle _restoreBorderStyle;
         private FormWindowState _restoreWindowState;
+        private readonly Func<Keys, bool> _hotkeyHandler;
 
-        internal DetachedConsoleForm(string title, Control content)
+        internal DetachedConsoleForm(string title, Control content, Func<Keys, bool> hotkeyHandler = null)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
             Text = title ?? string.Empty;
@@ -23,6 +24,7 @@ namespace CmdsManager.Presentation.Forms
             MinimumSize = new Size(480, 260);
             Size = new Size(900, 560);
             KeyPreview = true;
+            _hotkeyHandler = hotkeyHandler;
             _content = content;
             _content.Dock = DockStyle.Fill;
             Controls.Add(_content);
@@ -88,16 +90,15 @@ namespace CmdsManager.Presentation.Forms
 
         protected override void OnKeyDown(KeyEventArgs args)
         {
-            if (args.KeyCode == Keys.F11)
+            if (args.KeyCode == Keys.Escape && IsFullScreen)
             {
-                ToggleFullScreen();
+                SetFullScreen(false);
                 args.Handled = true;
                 args.SuppressKeyPress = true;
                 return;
             }
-            if (args.KeyCode == Keys.Escape && IsFullScreen)
+            if (_hotkeyHandler != null && _hotkeyHandler(args.KeyData))
             {
-                SetFullScreen(false);
                 args.Handled = true;
                 args.SuppressKeyPress = true;
                 return;
