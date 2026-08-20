@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using CmdsManager.Application;
 using CmdsManager.Domain;
@@ -13,12 +15,34 @@ namespace CmdsManager.Presentation.Forms
     internal sealed class QuickLaunchForm : Form
     {
         private const int WindowWidth = 720;
-        private const int SearchHeight = 66;
-        private const int ResultHeight = 62;
-        private const int EmptyHeight = 112;
+        private const int SearchHeight = 54;
+        private const int ResultHeight = 58;
+        private const int EmptyHeight = 104;
         private const int MaxVisibleResults = 6;
-        private const int CornerRadius = 12;
-        private const int DropShadowClassStyle = 0x00020000;
+        private const int CornerRadius = 6;
+        private const int ResultCornerRadius = 4;
+        private const int ShadowExtent = 18;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private sealed class LogicalFont
+        {
+            internal int Height;
+            internal int Width;
+            internal int Escapement;
+            internal int Orientation;
+            internal int Weight;
+            internal byte Italic;
+            internal byte Underline;
+            internal byte StrikeOut;
+            internal byte CharacterSet;
+            internal byte OutputPrecision;
+            internal byte ClipPrecision;
+            internal byte Quality;
+            internal byte PitchAndFamily;
+
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            internal string FaceName = string.Empty;
+        }
 
         private sealed class ScriptItem
         {
@@ -122,9 +146,9 @@ namespace CmdsManager.Presentation.Forms
                 args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 using (var pen = new Pen(_palette.MutedText, 1.6f))
                 {
-                    var glass = new RectangleF(21.5f, 23.5f, 13f, 13f);
+                    var glass = new RectangleF(21.5f, 17.5f, 12f, 12f);
                     args.Graphics.DrawEllipse(pen, glass);
-                    args.Graphics.DrawLine(pen, 33f, 35f, 39f, 41f);
+                    args.Graphics.DrawLine(pen, 32f, 28f, 38f, 34f);
                 }
                 using (var separator = new Pen(_palette.GridLine))
                     args.Graphics.DrawLine(separator, 0, Height - 1, Width, Height - 1);
@@ -134,7 +158,7 @@ namespace CmdsManager.Presentation.Forms
             {
                 if (Editor == null) return;
                 var height = Editor.PreferredHeight;
-                Editor.SetBounds(52, Math.Max(0, (Height - height) / 2), Math.Max(1, Width - 70), height);
+                Editor.SetBounds(50, Math.Max(0, (Height - height) / 2), Math.Max(1, Width - 68), height);
                 if (_cue != null) _cue.Bounds = Editor.Bounds;
             }
         }
@@ -215,6 +239,208 @@ namespace CmdsManager.Presentation.Forms
             }
         }
 
+        private sealed class LauncherShadowForm : Form
+        {
+            private const int WsExLayered = 0x00080000;
+            private const int WsExTransparent = 0x00000020;
+            private const int WsExNoActivate = 0x08000000;
+            private const int WsExToolWindow = 0x00000080;
+            private const int SwpNoMove = 0x0002;
+            private const int SwpNoSize = 0x0001;
+            private const int SwpNoActivate = 0x0010;
+            private const int SwpShowWindow = 0x0040;
+            private const byte AcSrcOver = 0x00;
+            private const byte AcSrcAlpha = 0x01;
+            private const int UlwAlpha = 0x00000002;
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct NativePoint
+            {
+                internal int X;
+                internal int Y;
+
+                internal NativePoint(int x, int y)
+                {
+                    X = x;
+                    Y = y;
+                }
+            }
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct NativeSize
+            {
+                internal int Width;
+                internal int Height;
+
+                internal NativeSize(int width, int height)
+                {
+                    Width = width;
+                    Height = height;
+                }
+            }
+
+            [StructLayout(LayoutKind.Sequential, Pack = 1)]
+            private struct BlendFunction
+            {
+                internal byte BlendOp;
+                internal byte BlendFlags;
+                internal byte SourceConstantAlpha;
+                internal byte AlphaFormat;
+            }
+
+            private readonly AppThemePalette _palette;
+            private readonly int _cornerRadius;
+            private Size _renderedContentSize;
+
+            internal LauncherShadowForm(AppThemePalette palette, int cornerRadius)
+            {
+                _palette = palette;
+                _cornerRadius = cornerRadius;
+                FormBorderStyle = FormBorderStyle.None;
+                ShowInTaskbar = false;
+                StartPosition = FormStartPosition.Manual;
+                TopMost = true;
+                Enabled = false;
+            }
+
+            protected override bool ShowWithoutActivation => true;
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    var parameters = base.CreateParams;
+                    parameters.ExStyle |= WsExLayered | WsExTransparent | WsExNoActivate | WsExToolWindow;
+                    return parameters;
+                }
+            }
+
+            internal void SyncTo(Form target)
+            {
+                if (target == null || target.IsDisposed || target.Width <= 0 || target.Height <= 0) return;
+                try
+                {
+                    var contentSize = target.Size;
+                    var desired = new Rectangle(target.Left - ShadowExtent, target.Top - ShadowExtent,
+                        contentSize.Width + ShadowExtent * 2, contentSize.Height + ShadowExtent * 2);
+                    if (Bounds != desired) Bounds = desired;
+                    if (_renderedContentSize != contentSize)
+                    {
+                        RenderLayer(contentSize);
+                        _renderedContentSize = contentSize;
+                    }
+                    if (!Visible) Show();
+                    SetWindowPos(Handle, target.Handle, 0, 0, 0, 0,
+                        SwpNoMove | SwpNoSize | SwpNoActivate | SwpShowWindow);
+                }
+                catch
+                {
+                    if (Visible) Hide();
+                }
+            }
+
+            private void RenderLayer(Size contentSize)
+            {
+                using (var bitmap = new Bitmap(contentSize.Width + ShadowExtent * 2,
+                    contentSize.Height + ShadowExtent * 2, PixelFormat.Format32bppPArgb))
+                {
+                    using (var graphics = Graphics.FromImage(bitmap))
+                    {
+                        graphics.Clear(Color.Transparent);
+                        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                        graphics.CompositingQuality = CompositingQuality.HighQuality;
+                        graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                        var content = new RectangleF(ShadowExtent, ShadowExtent,
+                            contentSize.Width, contentSize.Height);
+                        for (var layer = ShadowExtent; layer >= 1; layer--)
+                        {
+                            var progress = 1f - (layer - 1f) / ShadowExtent;
+                            var alpha = Math.Max(1, Math.Min(7,
+                                (int)Math.Round(1f + 6f * progress * progress)));
+                            var spread = layer - 0.5f;
+                            var shadowBounds = new RectangleF(content.Left - spread, content.Top - spread,
+                                content.Width + spread * 2f, content.Height + spread * 2f);
+                            using (var path = FluentGeometry.RoundedRectangle(shadowBounds,
+                                _cornerRadius + spread))
+                            using (var brush = new SolidBrush(Color.FromArgb(alpha, 0, 0, 0)))
+                                graphics.FillPath(brush, path);
+                        }
+
+                        using (var surfacePath = FluentGeometry.RoundedRectangle(content, _cornerRadius))
+                        using (var surface = new SolidBrush(_palette.Surface))
+                            graphics.FillPath(surface, surfacePath);
+
+                        var borderBounds = new RectangleF(content.Left + 0.5f, content.Top + 0.5f,
+                            Math.Max(1f, content.Width - 1f), Math.Max(1f, content.Height - 1f));
+                        using (var borderPath = FluentGeometry.RoundedRectangle(borderBounds,
+                            Math.Max(1f, _cornerRadius - 0.5f)))
+                        using (var border = new Pen(_palette.Border))
+                            graphics.DrawPath(border, borderPath);
+                    }
+                    ApplyBitmap(bitmap);
+                }
+            }
+
+            private void ApplyBitmap(Bitmap bitmap)
+            {
+                var screenDc = GetDC(IntPtr.Zero);
+                var memoryDc = CreateCompatibleDC(screenDc);
+                var bitmapHandle = IntPtr.Zero;
+                var previousBitmap = IntPtr.Zero;
+                try
+                {
+                    bitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
+                    previousBitmap = SelectObject(memoryDc, bitmapHandle);
+                    var destination = new NativePoint(Left, Top);
+                    var size = new NativeSize(bitmap.Width, bitmap.Height);
+                    var source = new NativePoint(0, 0);
+                    var blend = new BlendFunction
+                    {
+                        BlendOp = AcSrcOver,
+                        SourceConstantAlpha = 255,
+                        AlphaFormat = AcSrcAlpha
+                    };
+                    if (!UpdateLayeredWindow(Handle, screenDc, ref destination, ref size, memoryDc,
+                        ref source, 0, ref blend, UlwAlpha))
+                        throw new InvalidOperationException("Unable to render the Quick Launch shadow.");
+                }
+                finally
+                {
+                    if (previousBitmap != IntPtr.Zero) SelectObject(memoryDc, previousBitmap);
+                    if (bitmapHandle != IntPtr.Zero) DeleteObject(bitmapHandle);
+                    if (memoryDc != IntPtr.Zero) DeleteDC(memoryDc);
+                    if (screenDc != IntPtr.Zero) ReleaseDC(IntPtr.Zero, screenDc);
+                }
+            }
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern IntPtr GetDC(IntPtr window);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern int ReleaseDC(IntPtr window, IntPtr deviceContext);
+
+            [DllImport("gdi32.dll", SetLastError = true)]
+            private static extern IntPtr CreateCompatibleDC(IntPtr deviceContext);
+
+            [DllImport("gdi32.dll", SetLastError = true)]
+            private static extern bool DeleteDC(IntPtr deviceContext);
+
+            [DllImport("gdi32.dll", SetLastError = true)]
+            private static extern IntPtr SelectObject(IntPtr deviceContext, IntPtr graphicsObject);
+
+            [DllImport("gdi32.dll", SetLastError = true)]
+            private static extern bool DeleteObject(IntPtr graphicsObject);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool UpdateLayeredWindow(IntPtr window, IntPtr destinationDc,
+                ref NativePoint destination, ref NativeSize size, IntPtr sourceDc, ref NativePoint source,
+                int colorKey, ref BlendFunction blend, int flags);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y,
+                int width, int height, int flags);
+        }
+
         private readonly ScriptItem[] _scripts;
         private readonly LocalizationService _text;
         private readonly AppThemePalette _palette;
@@ -225,11 +451,12 @@ namespace CmdsManager.Presentation.Forms
         private readonly Label _emptyTitle = new Label { AutoSize = false, TextAlign = ContentAlignment.BottomCenter };
         private readonly Label _emptyHint = new Label { AutoSize = false, TextAlign = ContentAlignment.TopCenter };
         private readonly ToolTip _toolTip = new ToolTip { InitialDelay = 450, ReshowDelay = 100, AutoPopDelay = 12000 };
-        private readonly Font _queryFont = new Font("Segoe UI", 15f, FontStyle.Regular, GraphicsUnit.Point);
-        private readonly Font _titleFont = new Font("Segoe UI", 10f, FontStyle.Bold, GraphicsUnit.Point);
+        private readonly Font _queryFont = new Font("Segoe UI", 12f, FontStyle.Regular, GraphicsUnit.Point);
+        private readonly Font _titleFont = CreateMediumTitleFont();
         private readonly Font _detailFont = new Font("Segoe UI", 8.5f, FontStyle.Regular, GraphicsUnit.Point);
         private readonly Font _badgeFont = new Font("Segoe UI", 7.5f, FontStyle.Bold, GraphicsUnit.Point);
         private readonly Font _keyFont = new Font("Segoe UI", 8f, FontStyle.Regular, GraphicsUnit.Point);
+        private readonly LauncherShadowForm _shadow;
         private bool _dismissOnDeactivate;
         private int _toolTipIndex = -1;
 
@@ -244,6 +471,7 @@ namespace CmdsManager.Presentation.Forms
         {
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _palette = AppThemeManager.Resolve(theme);
+            _shadow = new LauncherShadowForm(_palette, CornerRadius);
             _scripts = (scripts ?? Enumerable.Empty<ScriptDefinition>())
                 .Where(item => item.Enabled)
                 .Select(item => CreateItem(item, runtimeForScript))
@@ -303,7 +531,6 @@ namespace CmdsManager.Presentation.Forms
             Controls.Add(content);
             Controls.Add(_search);
 
-            Paint += DrawWindowBorder;
             Shown += HandleShown;
             Deactivate += (sender, args) =>
             {
@@ -317,16 +544,11 @@ namespace CmdsManager.Presentation.Forms
         internal Guid SelectedScriptId { get; private set; }
         internal TextBox SearchEditor => _search.Editor;
         internal ListBox ResultsList => _list;
-
-        protected override CreateParams CreateParams
-        {
-            get
-            {
-                var parameters = base.CreateParams;
-                parameters.ClassStyle |= DropShadowClassStyle;
-                return parameters;
-            }
-        }
+        internal int SearchAreaHeight => SearchHeight;
+        internal int WindowCornerRadius => CornerRadius;
+        internal int ResultSelectionCornerRadius => ResultCornerRadius;
+        internal Font ResultTitleFont => _titleFont;
+        internal bool UsesFourSidedShadow => _shadow != null;
 
         protected override bool ProcessCmdKey(ref Message message, Keys keyData)
         {
@@ -377,13 +599,30 @@ namespace CmdsManager.Presentation.Forms
         protected override void OnSizeChanged(EventArgs args)
         {
             base.OnSizeChanged(args);
-            FluentGeometry.ApplyRoundedRegion(this, CornerRadius);
+            ApplyInsetWindowRegion();
+            if (Visible) _shadow?.SyncTo(this);
             Invalidate();
+        }
+
+        protected override void OnLocationChanged(EventArgs args)
+        {
+            base.OnLocationChanged(args);
+            if (Visible) _shadow?.SyncTo(this);
+        }
+
+        protected override void OnVisibleChanged(EventArgs args)
+        {
+            base.OnVisibleChanged(args);
+            if (!Visible && _shadow != null && !_shadow.IsDisposed) _shadow.Hide();
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) _toolTip.Dispose();
+            if (disposing)
+            {
+                _toolTip.Dispose();
+                _shadow?.Dispose();
+            }
             base.Dispose(disposing);
             if (!disposing) return;
             _queryFont.Dispose();
@@ -419,6 +658,7 @@ namespace CmdsManager.Presentation.Forms
         private void HandleShown(object sender, EventArgs args)
         {
             PositionWindow();
+            _shadow.SyncTo(this);
             _search.Editor.Focus();
             _search.Editor.SelectAll();
             Activate();
@@ -534,16 +774,14 @@ namespace CmdsManager.Presentation.Forms
                 Math.Max(1, args.Bounds.Width - 16), Math.Max(1, args.Bounds.Height - 6));
             if (selected)
             {
-                using (var path = FluentGeometry.RoundedRectangle(row, 8f))
+                using (var path = FluentGeometry.RoundedRectangle(row, ResultCornerRadius))
                 using (var brush = new SolidBrush(_palette.Selection))
                     graphics.FillPath(brush, path);
-                using (var accent = new SolidBrush(_palette.Accent))
-                    graphics.FillRectangle(accent, row.Left, row.Top + 10, 3, row.Height - 20);
             }
 
-            var badge = new Rectangle(row.Left + 13, row.Top + 11, 34, 34);
+            var badge = new Rectangle(row.Left + 13, row.Top + 11, 32, 32);
             var badgeColor = TypeColor(item.TypeCode);
-            using (var badgePath = FluentGeometry.RoundedRectangle(badge, 8f))
+            using (var badgePath = FluentGeometry.RoundedRectangle(badge, 6f))
             using (var badgeBrush = new SolidBrush(badgeColor))
                 graphics.FillPath(badgeBrush, badgePath);
             TextRenderer.DrawText(graphics, item.TypeCode, _badgeFont, badge, Color.White,
@@ -553,8 +791,8 @@ namespace CmdsManager.Presentation.Forms
             if (selected)
             {
                 const int keyWidth = 48;
-                var keyBounds = new Rectangle(right - keyWidth, row.Top + 17, keyWidth, 24);
-                using (var keyPath = FluentGeometry.RoundedRectangle(keyBounds, 5f))
+                var keyBounds = new Rectangle(right - keyWidth, row.Top + 15, keyWidth, 24);
+                using (var keyPath = FluentGeometry.RoundedRectangle(keyBounds, 4f))
                 using (var keyBrush = new SolidBrush(_palette.SurfaceAlternate))
                 using (var keyBorder = new Pen(_palette.Border))
                 {
@@ -571,7 +809,7 @@ namespace CmdsManager.Presentation.Forms
                 var stateSize = TextRenderer.MeasureText(item.StateText, _detailFont,
                     new Size(150, 22), TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
                 var stateWidth = Math.Min(150, stateSize.Width + 17);
-                var stateBounds = new Rectangle(right - stateWidth, row.Top + 18, stateWidth, 22);
+                var stateBounds = new Rectangle(right - stateWidth, row.Top + 16, stateWidth, 22);
                 using (var dot = new SolidBrush(StateColor(item.Runtime.State)))
                     graphics.FillEllipse(dot, stateBounds.Left, stateBounds.Top + 7, 8, 8);
                 TextRenderer.DrawText(graphics, item.StateText, _detailFont,
@@ -584,23 +822,26 @@ namespace CmdsManager.Presentation.Forms
             var textLeft = badge.Right + 14;
             var textWidth = Math.Max(20, right - textLeft);
             TextRenderer.DrawText(graphics, item.Name, _titleFont,
-                new Rectangle(textLeft, row.Top + 8, textWidth, 21), _palette.Text,
+                new Rectangle(textLeft, row.Top + 6, textWidth, 21), _palette.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             TextRenderer.DrawText(graphics, item.Interpreter + "  •  " + item.Path, _detailFont,
-                new Rectangle(textLeft, row.Top + 31, textWidth, 18), _palette.MutedText,
+                new Rectangle(textLeft, row.Top + 28, textWidth, 18), _palette.MutedText,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
         }
 
-        private void DrawWindowBorder(object sender, PaintEventArgs args)
+        private void ApplyInsetWindowRegion()
         {
-            args.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            if (Width <= 2 || Height <= 2) return;
             using (var path = FluentGeometry.RoundedRectangle(
-                new RectangleF(0.5f, 0.5f, Math.Max(1f, ClientSize.Width - 1f),
-                    Math.Max(1f, ClientSize.Height - 1f)), CornerRadius))
-            using (var pen = new Pen(_palette.Border))
-                args.Graphics.DrawPath(pen, path);
+                new RectangleF(1f, 1f, Width - 2f, Height - 2f), Math.Max(1f, CornerRadius - 1f)))
+            {
+                var replacement = new Region(path);
+                var previous = Region;
+                Region = replacement;
+                previous?.Dispose();
+            }
         }
 
         private static int MatchScore(ScriptItem item, string query)
@@ -718,6 +959,25 @@ namespace CmdsManager.Presentation.Forms
                 case ScriptRuntimeState.Stopping: return Color.FromArgb(249, 115, 22);
                 case ScriptRuntimeState.Failed: return _palette.Danger;
                 default: return _palette.MutedText;
+            }
+        }
+
+        private static Font CreateMediumTitleFont()
+        {
+            try
+            {
+                using (var template = new Font("Segoe UI", 10f, FontStyle.Regular, GraphicsUnit.Point))
+                using (var graphics = Graphics.FromHwnd(IntPtr.Zero))
+                {
+                    var logicalFont = new LogicalFont();
+                    template.ToLogFont(logicalFont, graphics);
+                    logicalFont.Weight = 500;
+                    return Font.FromLogFont(logicalFont);
+                }
+            }
+            catch
+            {
+                return new Font("Segoe UI", 10f, FontStyle.Regular, GraphicsUnit.Point);
             }
         }
     }

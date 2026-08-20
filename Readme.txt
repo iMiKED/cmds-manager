@@ -1,4 +1,4 @@
-CMDS MANAGER 1.1.4
+CMDS MANAGER 1.1.5
 ==================
 
 Website: https://github.com/iMiKED/cmds-manager
@@ -168,6 +168,15 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 ------------------
 
 The history below is derived from the Git commits of the application.
+
+1.1.5 - 20.08.2026
+- Matched Quick Launch more closely to the Windows 10 PowerToys Run geometry:
+  smaller anti-aliased window corners, a shorter search row, and smaller search
+  text;
+- replaced the native lower-right drop shadow with a dependency-free layered
+  shadow rendered evenly on all four sides;
+- removed the selection accent stripe, reduced the selection corner radius, and
+  changed script names from bold to a medium font weight.
 
 1.1.4 - 20.08.2026
 - Rebuilt global Quick Launch as a borderless rounded Spotlight/PowerToys
@@ -764,6 +773,15 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 -----------------
 
 История составлена по Git-коммитам приложения.
+
+1.1.5 — 20.08.2026
+- Геометрия окна быстрого запуска приближена к PowerToys Run в Windows 10:
+  уменьшены и сглажены углы окна, высота строки поиска и размер поискового
+  шрифта;
+- стандартная тень снизу и справа заменена лёгкой встроенной тенью, равномерно
+  отображаемой со всех четырёх сторон без дополнительных зависимостей;
+- убрана цветная полоса выбранной строки, уменьшен радиус её углов, а жирное
+  название скрипта заменено начертанием средней насыщенности.
 
 1.1.4 — 20.08.2026
 - Глобальное окно быстрого запуска переработано в стиле Spotlight/PowerToys Run:
