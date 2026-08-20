@@ -12,6 +12,13 @@ using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Presentation.Forms
 {
+    internal enum QuickLaunchSelectionAction
+    {
+        None,
+        ActivateScript,
+        AddScript
+    }
+
     internal sealed class QuickLaunchForm : Form
     {
         private const int WindowWidth = 720;
@@ -53,6 +60,7 @@ namespace CmdsManager.Presentation.Forms
             internal string TypeCode { get; set; }
             internal ScriptRuntimeSnapshot Runtime { get; set; }
             internal string StateText { get; set; }
+            internal bool IsAddAction { get; set; }
 
             internal bool ShowsRuntimeState
             {
@@ -67,6 +75,7 @@ namespace CmdsManager.Presentation.Forms
 
             public override string ToString()
             {
+                if (IsAddAction) return Name + ", " + Path;
                 var state = ShowsRuntimeState ? ", " + StateText : string.Empty;
                 return Name + ", " + Interpreter + ", " + Path + state;
             }
@@ -442,6 +451,7 @@ namespace CmdsManager.Presentation.Forms
         }
 
         private readonly ScriptItem[] _scripts;
+        private readonly ScriptItem _addItem;
         private readonly LocalizationService _text;
         private readonly AppThemePalette _palette;
         private readonly SearchSurface _search;
@@ -458,6 +468,8 @@ namespace CmdsManager.Presentation.Forms
         private readonly Font _keyFont = new Font("Segoe UI", 8f, FontStyle.Regular, GraphicsUnit.Point);
         private readonly LauncherShadowForm _shadow;
         private bool _dismissOnDeactivate;
+        private bool _closingForSelection;
+        private bool _initialPositionPrepared;
         private int _toolTipIndex = -1;
 
         internal QuickLaunchForm(IEnumerable<ScriptDefinition> scripts, LocalizationService text,
@@ -477,6 +489,13 @@ namespace CmdsManager.Presentation.Forms
                 .Select(item => CreateItem(item, runtimeForScript))
                 .OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
                 .ToArray();
+            _addItem = new ScriptItem
+            {
+                Name = text["QuickLaunch.AddScript"],
+                Path = text["QuickLaunch.AddScriptHint"],
+                TypeCode = "+",
+                IsAddAction = true
+            };
 
             Text = text["QuickLaunch.Title"];
             StartPosition = FormStartPosition.Manual;
@@ -501,7 +520,7 @@ namespace CmdsManager.Presentation.Forms
             _list.AccessibleName = text["QuickLaunch.List"];
             _list.AccessibleDescription = text["QuickLaunch.Run"];
             _list.DrawItem += DrawResult;
-            _list.DoubleClick += (sender, args) => AcceptSelection();
+            _list.MouseClick += HandleResultMouseClick;
             _list.MouseMove += HandleResultMouseMove;
             _list.ViewportChanged += (sender, args) => UpdateScrollIndicator();
             _list.MouseLeave += (sender, args) =>
@@ -534,7 +553,7 @@ namespace CmdsManager.Presentation.Forms
             Shown += HandleShown;
             Deactivate += (sender, args) =>
             {
-                if (!_dismissOnDeactivate || IsDisposed) return;
+                if (!_dismissOnDeactivate || _closingForSelection || IsDisposed) return;
                 DialogResult = DialogResult.Cancel;
                 Close();
             };
@@ -542,6 +561,7 @@ namespace CmdsManager.Presentation.Forms
         }
 
         internal Guid SelectedScriptId { get; private set; }
+        internal QuickLaunchSelectionAction SelectedAction { get; private set; }
         internal TextBox SearchEditor => _search.Editor;
         internal ListBox ResultsList => _list;
         internal int SearchAreaHeight => SearchHeight;
@@ -549,6 +569,14 @@ namespace CmdsManager.Presentation.Forms
         internal int ResultSelectionCornerRadius => ResultCornerRadius;
         internal Font ResultTitleFont => _titleFont;
         internal bool UsesFourSidedShadow => _shadow != null;
+        internal bool InitialPositionPrepared => _initialPositionPrepared;
+
+        internal void ActivateItemAt(int index)
+        {
+            if (index < 0 || index >= _list.Items.Count) return;
+            _list.SelectedIndex = index;
+            AcceptCurrentSelection();
+        }
 
         protected override bool ProcessCmdKey(ref Message message, Keys keyData)
         {
@@ -569,7 +597,7 @@ namespace CmdsManager.Presentation.Forms
                 }
                 if (key == Keys.Enter)
                 {
-                    AcceptSelection();
+                    AcceptCurrentSelection();
                     return true;
                 }
                 if (key == Keys.Down || key == Keys.Tab)
@@ -594,6 +622,13 @@ namespace CmdsManager.Presentation.Forms
                 }
             }
             return base.ProcessCmdKey(ref message, keyData);
+        }
+
+        protected override void OnLoad(EventArgs args)
+        {
+            base.OnLoad(args);
+            PositionWindow();
+            _initialPositionPrepared = true;
         }
 
         protected override void OnSizeChanged(EventArgs args)
@@ -657,7 +692,6 @@ namespace CmdsManager.Presentation.Forms
 
         private void HandleShown(object sender, EventArgs args)
         {
-            PositionWindow();
             _shadow.SyncTo(this);
             _search.Editor.Focus();
             _search.Editor.SelectAll();
@@ -674,6 +708,7 @@ namespace CmdsManager.Presentation.Forms
                 .OrderByDescending(result => result.Score)
                 .ThenBy(result => result.Item.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(result => result.Item)
+                .Concat(new[] { _addItem })
                 .ToArray();
 
             _list.BeginUpdate();
@@ -716,11 +751,15 @@ namespace CmdsManager.Presentation.Forms
             _scrollIndicator.Configure(_list.Items.Count, visibleCount, _list.TopIndex);
         }
 
-        private void AcceptSelection()
+        internal void AcceptCurrentSelection()
         {
             var selected = _list.SelectedItem as ScriptItem;
             if (selected == null) return;
-            SelectedScriptId = selected.Id;
+            SelectedScriptId = selected.IsAddAction ? Guid.Empty : selected.Id;
+            SelectedAction = selected.IsAddAction
+                ? QuickLaunchSelectionAction.AddScript
+                : QuickLaunchSelectionAction.ActivateScript;
+            _closingForSelection = true;
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -755,9 +794,21 @@ namespace CmdsManager.Presentation.Forms
             }
             _list.SelectedIndex = index;
             var item = (ScriptItem)_list.Items[index];
+            if (item.IsAddAction)
+            {
+                _toolTip.SetToolTip(_list, item.Name + Environment.NewLine + item.Path);
+                return;
+            }
             var status = item.ShowsRuntimeState ? Environment.NewLine + item.StateText : string.Empty;
             _toolTip.SetToolTip(_list, item.Name + Environment.NewLine + item.Path +
                 Environment.NewLine + item.Interpreter + status);
+        }
+
+        private void HandleResultMouseClick(object sender, MouseEventArgs args)
+        {
+            if (args.Button != MouseButtons.Left) return;
+            var index = _list.IndexFromPoint(args.Location);
+            ActivateItemAt(index);
         }
 
         private void DrawResult(object sender, DrawItemEventArgs args)
@@ -784,7 +835,8 @@ namespace CmdsManager.Presentation.Forms
             using (var badgePath = FluentGeometry.RoundedRectangle(badge, 6f))
             using (var badgeBrush = new SolidBrush(badgeColor))
                 graphics.FillPath(badgeBrush, badgePath);
-            TextRenderer.DrawText(graphics, item.TypeCode, _badgeFont, badge, Color.White,
+            TextRenderer.DrawText(graphics, item.TypeCode, item.IsAddAction ? _queryFont : _badgeFont,
+                badge, Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
             var right = row.Right - 13;
@@ -825,7 +877,8 @@ namespace CmdsManager.Presentation.Forms
                 new Rectangle(textLeft, row.Top + 6, textWidth, 21), _palette.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
-            TextRenderer.DrawText(graphics, item.Interpreter + "  •  " + item.Path, _detailFont,
+            var detail = item.IsAddAction ? item.Path : item.Interpreter + "  •  " + item.Path;
+            TextRenderer.DrawText(graphics, detail, _detailFont,
                 new Rectangle(textLeft, row.Top + 28, textWidth, 18), _palette.MutedText,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis |
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);

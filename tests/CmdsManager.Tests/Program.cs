@@ -417,7 +417,7 @@ namespace CmdsManager.Tests
                 @"..\..\..\..\Readme.txt"));
             Assert(File.Exists(readmePath), "release Readme.txt exists at the repository root");
             var guide = File.ReadAllText(readmePath, Encoding.UTF8);
-            Assert(guide.StartsWith("CMDS MANAGER 1.1.5", StringComparison.Ordinal),
+            Assert(guide.StartsWith("CMDS MANAGER 1.1.6", StringComparison.Ordinal),
                 "user guide identifies the stable release");
             foreach (var heading in new[]
             {
@@ -431,7 +431,7 @@ namespace CmdsManager.Tests
 
             foreach (var version in new[]
             {
-                "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
+                "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
                 "0.5.1", "0.5.0", "0.4.2", "0.4.1", "0.4.0", "0.3.0", "0.2.1", "0.2.0", "0.1.0-dev"
             })
             {
@@ -821,6 +821,7 @@ namespace CmdsManager.Tests
                 var state = new ConfigurationState(configuration);
                 var text = new LocalizationService(state);
                 var quickRunningId = Guid.NewGuid();
+                var quickStoppedId = Guid.NewGuid();
                 var quickScripts = new[]
                 {
                     new ScriptDefinition
@@ -832,6 +833,7 @@ namespace CmdsManager.Tests
                     },
                     new ScriptDefinition
                     {
+                        Id = quickStoppedId,
                         Name = "Docker-Start",
                         Path = @"C:\Users\Test\Docker\start.ps1",
                         Launch = new LaunchProfile { Interpreter = ScriptInterpreter.PowerShell7 }
@@ -899,6 +901,12 @@ namespace CmdsManager.Tests
                         "Quick Launch is a borderless Spotlight-style surface");
                     Equal(FormStartPosition.Manual, quick.StartPosition,
                         "Quick Launch uses explicit upper-center monitor positioning");
+                    var quickLoad = typeof(QuickLaunchForm).GetMethod("OnLoad",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    quickLoad.Invoke(quick, new object[] { EventArgs.Empty });
+                    Assert(quick.InitialPositionPrepared && !quick.Visible &&
+                        Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(quick.Bounds)),
+                        "Quick Launch computes its final monitor position before the first visible frame");
                     Assert(quick.TopMost && !quick.ShowInTaskbar && quick.ClientSize.Width >= 620 &&
                         quick.ClientSize.Width <= 760,
                         "Quick Launch is a compact floating global launcher");
@@ -922,8 +930,11 @@ namespace CmdsManager.Tests
                     Assert(quick.ResultsList.BorderStyle == BorderStyle.None &&
                         quick.ResultsList.ItemHeight >= 56 && quick.ResultsList.ItemHeight <= 60,
                         "Quick Launch results avoid the native Windows list-box border");
-                    Equal(2, quick.ResultsList.Items.Count,
-                        "Quick Launch initially lists every enabled script");
+                    Equal(3, quick.ResultsList.Items.Count,
+                        "Quick Launch lists every enabled script followed by Add script");
+                    Assert(Convert.ToString(quick.ResultsList.Items[quick.ResultsList.Items.Count - 1])
+                            .Contains(text["QuickLaunch.AddScript"]),
+                        "Quick Launch keeps Add script as its final row");
                     Assert(quick.ResultsList.Items.Cast<object>().Select(Convert.ToString).Any(value =>
                             value.Contains("Nodejs-App") && value.Contains(@"C:\Users\Test\Nodejs-App\start-app.cmd") &&
                             value.Contains("CMD") && value.Contains("Running")),
@@ -931,14 +942,40 @@ namespace CmdsManager.Tests
                     Assert(!AllControls(quick).OfType<Button>().Any(),
                         "Quick Launch relies on keyboard-first result activation instead of dialog buttons");
                     quick.SearchEditor.Text = "powershell 7";
-                    Equal(1, quick.ResultsList.Items.Count,
-                        "Quick Launch searches interpreter metadata as well as names and paths");
+                    Equal(2, quick.ResultsList.Items.Count,
+                        "Quick Launch searches interpreter metadata and keeps Add script last");
                     Assert(Convert.ToString(quick.ResultsList.Items[0]).Contains("Docker-Start"),
                         "Quick Launch ranks the matching script first");
                     quick.SearchEditor.Text = "missing-script";
-                    Equal(0, quick.ResultsList.Items.Count,
-                        "Quick Launch exposes a compact no-results state");
+                    Equal(1, quick.ResultsList.Items.Count,
+                        "Quick Launch keeps Add script available when no existing script matches");
+                    Assert(Convert.ToString(quick.ResultsList.Items[0]).Contains(text["QuickLaunch.AddScriptHint"]),
+                        "the Add script row explains that it creates a new entry");
                     quick.SearchEditor.Text = string.Empty;
+                    using (var scriptAction = new QuickLaunchForm(quickScripts, text, ApplicationTheme.Dark, id =>
+                        new ScriptRuntimeSnapshot { ScriptId = id, State = ScriptRuntimeState.Stopped }))
+                    {
+                        var dockerIndex = scriptAction.ResultsList.Items.Cast<object>().Select(Convert.ToString)
+                            .Select((value, index) => new { value, index })
+                            .Single(item => item.value.Contains("Docker-Start")).index;
+                        scriptAction.ActivateItemAt(dockerIndex);
+                        Equal(QuickLaunchSelectionAction.ActivateScript, scriptAction.SelectedAction,
+                            "a single-click script activation returns the script action");
+                        Equal(quickStoppedId, scriptAction.SelectedScriptId,
+                            "a single-click script activation returns the selected script identifier");
+                        Equal(DialogResult.OK, scriptAction.DialogResult,
+                            "script activation survives launcher closing as an accepted result");
+                    }
+                    using (var addAction = new QuickLaunchForm(quickScripts, text, ApplicationTheme.Dark))
+                    {
+                        addAction.ActivateItemAt(addAction.ResultsList.Items.Count - 1);
+                        Equal(QuickLaunchSelectionAction.AddScript, addAction.SelectedAction,
+                            "the final launcher row returns the Add script action");
+                        Equal(Guid.Empty, addAction.SelectedScriptId,
+                            "the Add script action is not confused with a script identifier");
+                        Equal(DialogResult.OK, addAction.DialogResult,
+                            "the Add script action survives launcher closing as an accepted result");
+                    }
                     var retention = AllControls(settings).OfType<NumericUpDown>()
                         .Single(control => control.Maximum == 3650);
                     Assert(retention.Width <= 80, "log retention field is sized for its value");
@@ -1136,7 +1173,7 @@ namespace CmdsManager.Tests
                         "embedded 128 px PNG icon frame is decoded without pixel corruption");
                     var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "Cmds Manager");
                     var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
-                    Equal("Version 1.1.5", aboutVersion.Text, "About contains the stable release version");
+                    Equal("Version 1.1.6", aboutVersion.Text, "About contains the stable release version");
                     var aboutBuild = AllControls(about).OfType<Label>()
                         .First(control => control.Text.StartsWith("Built on: ", StringComparison.Ordinal));
                     DateTime parsedBuildTimestamp;
@@ -1647,7 +1684,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 1.1.5", form.Text,
+                    Equal("Cmds Manager 1.1.6", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
@@ -1813,7 +1850,7 @@ namespace CmdsManager.Tests
                         catch (ConfigurationChangedException) { return false; }
                     }, TimeSpan.FromSeconds(2)), "dragged console pane height is persisted to INI");
 
-                    supervisor.Start(script, string.Empty);
+                    form.HandleQuickLaunchSelection(QuickLaunchSelectionAction.ActivateScript, script.Id);
                     var elapsed = Stopwatch.StartNew();
                     DataGridViewRow row = null;
                     var runningVisible = false;
@@ -1850,6 +1887,19 @@ namespace CmdsManager.Tests
                     }
                     row = grid.Rows.Cast<DataGridViewRow>().First(item => script.Id.Equals(item.Tag));
                     Equal("●", Convert.ToString(row.Cells["Activity"].Value), "running marker does not blink");
+
+                    var gridFilter = toolbar.Items.OfType<ToolStripTextBox>().Single();
+                    gridFilter.Text = "Second row";
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(!grid.Rows.Cast<DataGridViewRow>().Any(item => script.Id.Equals(item.Tag)),
+                        "the running script can be hidden by the current main-grid filter");
+                    form.HandleQuickLaunchSelection(QuickLaunchSelectionAction.ActivateScript, script.Id);
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(string.IsNullOrEmpty(gridFilter.Text) && grid.SelectedRows.Count == 1 &&
+                        script.Id.Equals(grid.SelectedRows[0].Tag),
+                        "activating a running script opens the main window and reveals its console row");
+                    Assert(supervisor.IsRunning(script.Id) && supervisor.GetSnapshot(script.Id).ActiveCount == 1,
+                        "activating a running script focuses it without stopping or launching another instance");
 
                     supervisor.StopAsync(script.Id).GetAwaiter().GetResult();
                     elapsed.Restart();

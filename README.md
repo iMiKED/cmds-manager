@@ -19,7 +19,7 @@ maintained by [iMiKED from 4PDA](https://4pda.to/forum/index.php?showuser=101794
 Cmds Manager is a lightweight Windows tray application for organizing, running,
 monitoring, and stopping local automation scripts. It keeps a searchable script
 catalog in a portable INI file and presents captured output in a modern tabbed
-console workspace. The current source version is 1.1.5.
+console workspace. The current source version is 1.1.6.
 
 The application is built with C# and Windows Forms for .NET Framework 4.8. The
 release contains one production executable and does not bundle PowerShell, .NET,
@@ -92,6 +92,10 @@ If you like Cmds Manager or it saves you time, you can support the author:
   the main window
 - Search enabled scripts by name, path, interpreter, or fuzzy text; each result
   shows its interpreter, full-path tooltip, live process state, and `Enter` hint
+- Activate a result with one click or `Enter`: stopped scripts start, while a
+  running script opens the main window and selects its existing console
+- Open the script editor from the permanent **Add script…** row at the end of
+  Quick Launch results
 - Close the main window to the tray or exit explicitly
 - Start Cmds Manager with Windows for the current user
 - Save main-window position, size, maximized state, and console-pane height
@@ -201,7 +205,7 @@ To compile and package without running tests:
 For release validation, the expected tag can be supplied explicitly:
 
 ```powershell
-.\build.ps1 -ExpectedVersion 1.1.5
+.\build.ps1 -ExpectedVersion 1.1.6
 ```
 
 The command fails when the tag and `AssemblyInformationalVersion` differ.

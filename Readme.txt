@@ -1,4 +1,4 @@
-CMDS MANAGER 1.1.5
+CMDS MANAGER 1.1.6
 ==================
 
 Website: https://github.com/iMiKED/cmds-manager
@@ -64,6 +64,10 @@ unless the selected folder allows the application to update its INI and logs.
   surface without opening the main window first;
 - find enabled scripts by name, path, interpreter, or fuzzy text and see each
   result's path, interpreter, live process state, and Enter action hint;
+- activate a result with one click or Enter: a stopped script starts, while a
+  running script opens the main window and selects its existing console;
+- open the script editor from the permanent Add script row at the end of Quick
+  Launch results;
 - show a static green execution indicator and detailed runtime state;
 - capture stdout and stderr in a fast, bounded console history;
 - configure how much console history is kept in memory;
@@ -168,6 +172,17 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 ------------------
 
 The history below is derived from the Git commits of the application.
+
+1.1.6 - 20.08.2026
+- Positioned Quick Launch before its first visible frame so it no longer jumps
+  down from the top of the screen when opened;
+- made a single click and Enter reliably activate the selected result instead of
+  losing the action while the launcher closes;
+- made inactive scripts start immediately, while active scripts safely open the
+  main window and select their existing grid row and console without stopping or
+  launching another instance;
+- added a permanent final Add script row that opens the main window and the
+  modal script editor.
 
 1.1.5 - 20.08.2026
 - Matched Quick Launch more closely to the Windows 10 PowerToys Run geometry:
@@ -668,6 +683,10 @@ Files, если выбранная папка не позволяет обнов
   заголовка в стиле Spotlight/PowerToys Run;
 - неточный поиск включённых скриптов по названию, пути и интерпретатору с выводом
   пути, типа интерпретатора, текущего состояния процесса и подсказки Enter;
+- запуск остановленного скрипта по одному клику или Enter; для уже работающего
+  скрипта открывается главное окно и выбирается его существующая консоль;
+- открытие редактора новой записи через постоянную последнюю строку «Добавить
+  скрипт…» в результатах быстрого запуска;
 - статичный зелёный индикатор выполнения и подробное состояние процесса;
 - быстрый перехват stdout и stderr с ограниченной историей консоли;
 - настройка объёма истории, сохраняемой в каждой консоли;
@@ -773,6 +792,17 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 -----------------
 
 История составлена по Git-коммитам приложения.
+
+1.1.6 — 20.08.2026
+- Позиция быстрого запуска теперь вычисляется до первого видимого кадра, поэтому
+  окно больше не прыгает вниз от верхней границы экрана;
+- одиночный клик и Enter надёжно активируют выбранную строку: действие больше не
+  теряется при закрытии окна быстрого запуска;
+- остановленный скрипт сразу запускается, а для уже работающего скрипта безопасно
+  открывается главное окно с выбранными строкой и существующей консолью — без
+  остановки и запуска второго экземпляра;
+- последней строкой добавлено постоянное действие «Добавить скрипт…», открывающее
+  главное окно и модальный редактор новой записи.
 
 1.1.5 — 20.08.2026
 - Геометрия окна быстрого запуска приближена к PowerToys Run в Windows 10:

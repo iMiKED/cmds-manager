@@ -286,23 +286,44 @@ namespace CmdsManager.Presentation.Forms
                 return;
             }
 
+            var action = QuickLaunchSelectionAction.None;
+            var scriptId = Guid.Empty;
             using (var form = new QuickLaunchForm(Configuration.Scripts, _text,
-                Configuration.Application.Theme, scriptId => _supervisor.GetSnapshot(scriptId)))
+                Configuration.Application.Theme, id => _supervisor.GetSnapshot(id)))
             {
                 _quickLauncher = form;
                 try
                 {
-                    var result = Visible && WindowState != FormWindowState.Minimized
-                        ? form.ShowDialog(this)
-                        : form.ShowDialog();
-                    if (result == DialogResult.OK && form.SelectedScriptId != Guid.Empty)
-                        RunScript(form.SelectedScriptId.ToString("D"));
+                    if (Visible && WindowState != FormWindowState.Minimized)
+                        form.ShowDialog(this);
+                    else
+                        form.ShowDialog();
+                    action = form.SelectedAction;
+                    scriptId = form.SelectedScriptId;
                 }
                 finally
                 {
                     if (ReferenceEquals(_quickLauncher, form)) _quickLauncher = null;
                 }
             }
+            HandleQuickLaunchSelection(action, scriptId);
+        }
+
+        internal void HandleQuickLaunchSelection(QuickLaunchSelectionAction action, Guid scriptId)
+        {
+            if (action == QuickLaunchSelectionAction.AddScript)
+            {
+                ShowFromTray();
+                AddScript();
+                return;
+            }
+            if (action != QuickLaunchSelectionAction.ActivateScript || scriptId == Guid.Empty) return;
+            if (_supervisor.IsRunning(scriptId))
+            {
+                RevealRunningScript(scriptId);
+                return;
+            }
+            RunScript(scriptId.ToString("D"));
         }
 
         protected override void Dispose(bool disposing)
@@ -546,6 +567,33 @@ namespace CmdsManager.Presentation.Forms
             {
                 ShowError(_text.Get("Main.RestartFailed", selected.Name), exception);
             }
+        }
+
+        private void RevealRunningScript(Guid scriptId)
+        {
+            ShowFromTray();
+            var row = _grid.Rows.Cast<DataGridViewRow>()
+                .FirstOrDefault(item => item.Tag is Guid && (Guid)item.Tag == scriptId);
+            if (row == null && !string.IsNullOrWhiteSpace(_filter.Text))
+            {
+                _filter.Text = string.Empty;
+                row = _grid.Rows.Cast<DataGridViewRow>()
+                    .FirstOrDefault(item => item.Tag is Guid && (Guid)item.Tag == scriptId);
+            }
+            if (row == null)
+            {
+                RefreshGrid();
+                row = _grid.Rows.Cast<DataGridViewRow>()
+                    .FirstOrDefault(item => item.Tag is Guid && (Guid)item.Tag == scriptId);
+            }
+            if (row != null)
+            {
+                _grid.ClearSelection();
+                row.Selected = true;
+                _grid.CurrentCell = row.Cells["Name"];
+                if (row.Index >= 0) _grid.FirstDisplayedScrollingRowIndex = row.Index;
+            }
+            _console.SelectScript(scriptId);
         }
 
         private void EditSelectedFile()
