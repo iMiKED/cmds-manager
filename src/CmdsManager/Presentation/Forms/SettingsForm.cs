@@ -143,9 +143,9 @@ namespace CmdsManager.Presentation.Forms
 
             var tabs = new FluentTabControl { Dock = DockStyle.Fill };
             tabs.TabPages.Add(Page(_text["Settings.Tab.General"], general));
-            tabs.TabPages.Add(Page(_text["Settings.Tab.Hotkeys"], hotkeys));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Console"], console));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Appearance"], appearance));
+            tabs.TabPages.Add(Page(_text["Settings.Tab.Hotkeys"], hotkeys));
             tabs.TabPages.Add(Page(_text["Settings.Tab.Tools"], tools));
             var save = FluentDialogButtons.Primary(_text["Common.Save"]);
             var cancel = FluentDialogButtons.Secondary(_text["Common.Cancel"], DialogResult.Cancel);

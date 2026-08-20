@@ -417,7 +417,7 @@ namespace CmdsManager.Tests
                 @"..\..\..\..\Readme.txt"));
             Assert(File.Exists(readmePath), "release Readme.txt exists at the repository root");
             var guide = File.ReadAllText(readmePath, Encoding.UTF8);
-            Assert(guide.StartsWith("CMDS MANAGER 1.1.3", StringComparison.Ordinal),
+            Assert(guide.StartsWith("CMDS MANAGER 1.1.4", StringComparison.Ordinal),
                 "user guide identifies the stable release");
             foreach (var heading in new[]
             {
@@ -431,7 +431,7 @@ namespace CmdsManager.Tests
 
             foreach (var version in new[]
             {
-                "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
+                "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
                 "0.5.1", "0.5.0", "0.4.2", "0.4.1", "0.4.0", "0.3.0", "0.2.1", "0.2.0", "0.1.0-dev"
             })
             {
@@ -820,16 +820,42 @@ namespace CmdsManager.Tests
                 configuration.Application.Theme = ApplicationTheme.Dark;
                 var state = new ConfigurationState(configuration);
                 var text = new LocalizationService(state);
+                var quickRunningId = Guid.NewGuid();
+                var quickScripts = new[]
+                {
+                    new ScriptDefinition
+                    {
+                        Id = quickRunningId,
+                        Name = "Nodejs-App",
+                        Path = @"C:\Users\Test\Nodejs-App\start-app.cmd",
+                        Launch = new LaunchProfile { Interpreter = ScriptInterpreter.Cmd }
+                    },
+                    new ScriptDefinition
+                    {
+                        Name = "Docker-Start",
+                        Path = @"C:\Users\Test\Docker\start.ps1",
+                        Launch = new LaunchProfile { Interpreter = ScriptInterpreter.PowerShell7 }
+                    }
+                };
                 using (var about = new AboutForm(text, ApplicationTheme.Dark))
                 using (var settings = new SettingsForm(configuration.Application, configuration.PowerShell7Path, configuration.Localization, text))
                 using (var script = new ScriptEditorForm(null, configuration.Defaults, directory, text, ApplicationTheme.Dark))
+                using (var quick = new QuickLaunchForm(quickScripts, text, ApplicationTheme.Dark, id =>
+                    new ScriptRuntimeSnapshot
+                    {
+                        ScriptId = id,
+                        State = id == quickRunningId ? ScriptRuntimeState.Running : ScriptRuntimeState.Stopped,
+                        ActiveCount = id == quickRunningId ? 1 : 0
+                    }))
                 {
                     var aboutHandle = about.Handle;
                     var settingsHandle = settings.Handle;
                     var scriptHandle = script.Handle;
+                    var quickHandle = quick.Handle;
                     about.PerformLayout();
                     settings.PerformLayout();
                     script.PerformLayout();
+                    quick.PerformLayout();
                     Assert(about.ClientSize.Width <= 580 && about.ClientSize.Height <= 300,
                         "About box remains compact with a 128 px icon");
                     Assert(settings.ClientSize.Width <= 530 && settings.ClientSize.Height <= 340, "settings dialog is narrower and compact");
@@ -839,6 +865,8 @@ namespace CmdsManager.Tests
                     Equal("Cmds Manager settings", settings.Text, "English settings title comes from INI strings");
                     Assert(settings.BackColor.GetBrightness() < 0.3f && script.BackColor.GetBrightness() < 0.3f,
                         "dark application theme reaches compact dialogs");
+                    Assert(quick.BackColor.GetBrightness() < 0.3f,
+                        "dark application theme reaches the Quick Launch palette");
                     var settingsTabs = AllControls(settings).OfType<TabControl>().Single(control =>
                         control.TabPages.Cast<TabPage>().Any(page => page.Text == text["Settings.Tab.General"]));
                     Assert(settingsTabs.GetType().Name == "FluentTabControl",
@@ -847,6 +875,11 @@ namespace CmdsManager.Tests
                         "settings exposes a compact console configuration page");
                     var hotkeyPage = settingsTabs.TabPages.Cast<TabPage>()
                         .Single(page => page.Text == text["Settings.Tab.Hotkeys"]);
+                    var appearancePage = settingsTabs.TabPages.Cast<TabPage>()
+                        .Single(page => page.Text == text["Settings.Tab.Appearance"]);
+                    Equal(settingsTabs.TabPages.IndexOf(appearancePage) + 1,
+                        settingsTabs.TabPages.IndexOf(hotkeyPage),
+                        "the Hotkeys page immediately follows Appearance");
                     var hotkeyTabs = AllControls(hotkeyPage).OfType<TabControl>().Single();
                     Equal(5, hotkeyTabs.TabPages.Count,
                         "hotkeys are grouped into compact Global, Scripts, Window, Console, and Text pages");
@@ -862,6 +895,42 @@ namespace CmdsManager.Tests
                         "obsolete per-user auto-start warning is removed from the language tables");
                     Assert(!AllControls(script).OfType<ScrollableControl>().Any(control => control.AutoScroll),
                         "script editor has no AutoScroll container");
+                    Equal(FormBorderStyle.None, quick.FormBorderStyle,
+                        "Quick Launch is a borderless Spotlight-style surface");
+                    Equal(FormStartPosition.Manual, quick.StartPosition,
+                        "Quick Launch uses explicit upper-center monitor positioning");
+                    Assert(quick.TopMost && !quick.ShowInTaskbar && quick.ClientSize.Width >= 620 &&
+                        quick.ClientSize.Width <= 760,
+                        "Quick Launch is a compact floating global launcher");
+                    Assert(quick.SearchEditor.BorderStyle == BorderStyle.None &&
+                        quick.SearchEditor.Font.SizeInPoints >= 14f &&
+                        quick.SearchEditor.AccessibleName == text["QuickLaunch.SearchPlaceholder"],
+                        "Quick Launch has a large borderless localized search field");
+                    Assert(AllControls(quick).OfType<Label>().Any(label =>
+                            label.Text == text["QuickLaunch.SearchPlaceholder"]),
+                        "Quick Launch displays its localized search placeholder");
+                    Equal(DrawMode.OwnerDrawFixed, quick.ResultsList.DrawMode,
+                        "Quick Launch uses custom-drawn modern result rows");
+                    Assert(quick.ResultsList.BorderStyle == BorderStyle.None &&
+                        quick.ResultsList.ItemHeight >= 58,
+                        "Quick Launch results avoid the native Windows list-box border");
+                    Equal(2, quick.ResultsList.Items.Count,
+                        "Quick Launch initially lists every enabled script");
+                    Assert(quick.ResultsList.Items.Cast<object>().Select(Convert.ToString).Any(value =>
+                            value.Contains("Nodejs-App") && value.Contains(@"C:\Users\Test\Nodejs-App\start-app.cmd") &&
+                            value.Contains("CMD") && value.Contains("Running")),
+                        "Quick Launch result accessibility includes name, path, interpreter, and runtime state");
+                    Assert(!AllControls(quick).OfType<Button>().Any(),
+                        "Quick Launch relies on keyboard-first result activation instead of dialog buttons");
+                    quick.SearchEditor.Text = "powershell 7";
+                    Equal(1, quick.ResultsList.Items.Count,
+                        "Quick Launch searches interpreter metadata as well as names and paths");
+                    Assert(Convert.ToString(quick.ResultsList.Items[0]).Contains("Docker-Start"),
+                        "Quick Launch ranks the matching script first");
+                    quick.SearchEditor.Text = "missing-script";
+                    Equal(0, quick.ResultsList.Items.Count,
+                        "Quick Launch exposes a compact no-results state");
+                    quick.SearchEditor.Text = string.Empty;
                     var retention = AllControls(settings).OfType<NumericUpDown>()
                         .Single(control => control.Maximum == 3650);
                     Assert(retention.Width <= 80, "log retention field is sized for its value");
@@ -1059,7 +1128,7 @@ namespace CmdsManager.Tests
                         "embedded 128 px PNG icon frame is decoded without pixel corruption");
                     var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "Cmds Manager");
                     var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
-                    Equal("Version 1.1.3", aboutVersion.Text, "About contains the stable release version");
+                    Equal("Version 1.1.4", aboutVersion.Text, "About contains the stable release version");
                     var aboutBuild = AllControls(about).OfType<Label>()
                         .First(control => control.Text.StartsWith("Built on: ", StringComparison.Ordinal));
                     DateTime parsedBuildTimestamp;
@@ -1570,7 +1639,7 @@ namespace CmdsManager.Tests
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 1.1.3", form.Text,
+                    Equal("Cmds Manager 1.1.4", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");

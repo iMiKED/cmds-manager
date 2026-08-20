@@ -1,4 +1,4 @@
-CMDS MANAGER 1.1.3
+CMDS MANAGER 1.1.4
 ==================
 
 Website: https://github.com/iMiKED/cmds-manager
@@ -60,8 +60,10 @@ unless the selected folder allows the application to update its INI and logs.
 - configure all global, application, tab, and console hotkeys on a dedicated
   settings page, disable individual bindings, or reset them to defaults;
 - use optional global Show App, Quick Launch, and Emergency Stop All hotkeys;
-- filter enabled scripts by name or path in Quick Launch and start one without
-  opening the main window first;
+- open Quick Launch as a borderless, rounded Spotlight/PowerToys Run-style
+  surface without opening the main window first;
+- find enabled scripts by name, path, interpreter, or fuzzy text and see each
+  result's path, interpreter, live process state, and Enter action hint;
 - show a static green execution indicator and detailed runtime state;
 - capture stdout and stderr in a fast, bounded console history;
 - configure how much console history is kept in memory;
@@ -166,6 +168,16 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 ------------------
 
 The history below is derived from the Git commits of the application.
+
+1.1.4 - 20.08.2026
+- Rebuilt global Quick Launch as a borderless rounded Spotlight/PowerToys
+  Run-style surface with a large search field and compact result rows;
+- added fuzzy searching by script name, path, interpreter, and live state;
+- added interpreter badges, path details and tooltips, live process state,
+  Enter action hints, keyboard navigation, a no-results view, and a slim modern
+  scroll indicator;
+- made the global Quick Launch hotkey toggle the launcher and moved the Hotkeys
+  settings page immediately after Appearance.
 
 1.1.3 - 20.08.2026
 - Moved hotkey configuration to a dedicated compact Fluent settings page;
@@ -643,8 +655,10 @@ Files, если выбранная папка не позволяет обнов
   хоткеев на отдельной вкладке с возможностью отключения и сброса;
 - необязательные глобальные хоткеи «Открыть приложение», «Быстрый запуск» и
   «Экстренно остановить всё»;
-- поиск активных скриптов по названию или пути в окне быстрого запуска без
-  предварительного открытия главного окна;
+- открытие быстрого запуска без главного окна в виде скруглённой панели без
+  заголовка в стиле Spotlight/PowerToys Run;
+- неточный поиск включённых скриптов по названию, пути и интерпретатору с выводом
+  пути, типа интерпретатора, текущего состояния процесса и подсказки Enter;
 - статичный зелёный индикатор выполнения и подробное состояние процесса;
 - быстрый перехват stdout и stderr с ограниченной историей консоли;
 - настройка объёма истории, сохраняемой в каждой консоли;
@@ -750,6 +764,17 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 -----------------
 
 История составлена по Git-коммитам приложения.
+
+1.1.4 — 20.08.2026
+- Глобальное окно быстрого запуска переработано в стиле Spotlight/PowerToys Run:
+  убраны рамка и заголовок, добавлены скругление, тень, крупный поиск и компактные
+  строки результатов;
+- добавлен неточный поиск по названию, пути, интерпретатору и текущему состоянию;
+- в результатах показаны значок интерпретатора, путь с полной подсказкой, живое
+  состояние процесса и подсказка Enter; добавлены клавиатурная навигация,
+  состояние без результатов и тонкий современный индикатор прокрутки;
+- повторный глобальный хоткей закрывает launcher, а вкладка «Хоткеи» перемещена
+  сразу после вкладки «Внешний вид».
 
 1.1.3 — 20.08.2026
 - Настройки хоткеев перенесены на отдельную компактную Fluent-вкладку;

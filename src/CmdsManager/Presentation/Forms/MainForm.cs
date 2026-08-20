@@ -55,6 +55,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly ToolStripMenuItem _contextEditFile = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextFolder = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextDelete = new ToolStripMenuItem();
+        private QuickLaunchForm _quickLauncher;
         private bool _refreshingGrid;
         private bool _restoringPaneLayout;
         private bool _restoringWindowPlacement;
@@ -278,13 +279,29 @@ namespace CmdsManager.Presentation.Forms
                 return;
             }
 
-            using (var form = new QuickLaunchForm(Configuration.Scripts, _text, Configuration.Application.Theme))
+            if (_quickLauncher != null && !_quickLauncher.IsDisposed)
             {
-                var result = Visible && WindowState != FormWindowState.Minimized
-                    ? form.ShowDialog(this)
-                    : form.ShowDialog();
-                if (result == DialogResult.OK && form.SelectedScriptId != Guid.Empty)
-                    RunScript(form.SelectedScriptId.ToString("D"));
+                _quickLauncher.DialogResult = DialogResult.Cancel;
+                _quickLauncher.Close();
+                return;
+            }
+
+            using (var form = new QuickLaunchForm(Configuration.Scripts, _text,
+                Configuration.Application.Theme, scriptId => _supervisor.GetSnapshot(scriptId)))
+            {
+                _quickLauncher = form;
+                try
+                {
+                    var result = Visible && WindowState != FormWindowState.Minimized
+                        ? form.ShowDialog(this)
+                        : form.ShowDialog();
+                    if (result == DialogResult.OK && form.SelectedScriptId != Guid.Empty)
+                        RunScript(form.SelectedScriptId.ToString("D"));
+                }
+                finally
+                {
+                    if (ReferenceEquals(_quickLauncher, form)) _quickLauncher = null;
+                }
             }
         }
 
