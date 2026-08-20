@@ -19,7 +19,7 @@ maintained by [iMiKED from 4PDA](https://4pda.to/forum/index.php?showuser=101794
 Cmds Manager is a lightweight Windows tray application for organizing, running,
 monitoring, and stopping local automation scripts. It keeps a searchable script
 catalog in a portable INI file and presents captured output in a modern tabbed
-console workspace. The current source version is 1.1.0.
+console workspace. The current source version is 1.1.6.
 
 The application is built with C# and Windows Forms for .NET Framework 4.8. The
 release contains one production executable and does not bundle PowerShell, .NET,
@@ -68,9 +68,8 @@ If you like Cmds Manager or it saves you time, you can support the author:
 - Configure the displayed history buffer size for every console
 - Decode UTF-8, Windows-1251, OEM Windows, UTF-16 LE, or mixed output in Auto mode
 - Re-decode already captured bytes after changing a tab's encoding
-- Search the active console with `Ctrl+F`; use `F3` and `Shift+F3` for the next
-  or previous match
-- Freeze and resume automatic scrolling with `Scroll Lock`
+- Search the active console, navigate matches, and control scrolling with
+  configurable hotkeys (`Ctrl+F`, `F3`, `Shift+F3`, and `Scroll Lock` by default)
 - Record each console to a dedicated UTF-8 file automatically or on demand;
   pause, resume, stop, and enforce a hard per-file size limit
 - Configure the font, text color, background color, tab colors, and opacity
@@ -84,6 +83,19 @@ If you like Cmds Manager or it saves you time, you can support the author:
 ### Application experience
 
 - Open or hide the main window with one click on the notification-area icon
+- Configure all application and console hotkeys on a dedicated Fluent settings
+  page; each action can be disabled or reset to its default combination
+- Register optional global **Show App**, **Quick Launch**, and **Emergency Stop
+  All** hotkeys while Cmds Manager is running
+- Use a compact borderless Spotlight/PowerToys Run-style Quick Launch surface
+  with anti-aliased corners and an even four-sided shadow, without first opening
+  the main window
+- Search enabled scripts by name, path, interpreter, or fuzzy text; each result
+  shows its interpreter, full-path tooltip, live process state, and `Enter` hint
+- Activate a result with one click or `Enter`: stopped scripts start, while a
+  running script opens the main window and selects its existing console
+- Open the script editor from the permanent **Add script…** row at the end of
+  Quick Launch results
 - Close the main window to the tray or exit explicitly
 - Start Cmds Manager with Windows for the current user
 - Save main-window position, size, maximized state, and console-pane height
@@ -148,6 +160,7 @@ paths are resolved from this directory and Windows environment variables such as
 | INI section | Purpose |
 | --- | --- |
 | `[Application]` | Theme, tray behavior, auto-start, editor, logs, window geometry, console behavior and appearance |
+| `[Hotkeys]` | Enabled state and key combination for every global, application, tab, and console action |
 | `[Defaults]` | Initial launch profile for newly added scripts |
 | `[PowerShell]` | Optional path to `pwsh.exe` |
 | `[Localization]` | Active language |
@@ -192,7 +205,7 @@ To compile and package without running tests:
 For release validation, the expected tag can be supplied explicitly:
 
 ```powershell
-.\build.ps1 -ExpectedVersion 1.1.0
+.\build.ps1 -ExpectedVersion 1.1.6
 ```
 
 The command fails when the tag and `AssemblyInformationalVersion` differ.

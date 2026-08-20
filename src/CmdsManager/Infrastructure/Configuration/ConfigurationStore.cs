@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using CmdsManager.Domain;
+using CmdsManager.Infrastructure.Windows;
 
 namespace CmdsManager.Infrastructure.Configuration
 {
@@ -32,7 +33,7 @@ namespace CmdsManager.Infrastructure.Configuration
 
     public sealed class ConfigurationStore
     {
-        private const int CurrentVersion = 9;
+        private const int CurrentVersion = 12;
         private readonly object _sync = new object();
         private readonly UTF8Encoding _utf8 = new UTF8Encoding(false, true);
         private byte[] _loadedHash;
@@ -152,6 +153,8 @@ namespace CmdsManager.Infrastructure.Configuration
             app.StartHiddenWhenAutoStarted = ReadBool(ini, "Application", "StartHiddenWhenAutoStarted", true);
             app.AutoStartScripts = ReadBool(ini, "Application", "AutoStartScripts", true);
             app.ConfirmBeforeDelete = ReadBool(ini, "Application", "ConfirmBeforeDelete", true);
+            app.ShowAppHotkeyEnabled = ReadBool(ini, "Application", "ShowAppHotkeyEnabled", false);
+            app.ShowAppHotkey = ini.Get("Application", "ShowAppHotkey", app.ShowAppHotkey).Trim();
             app.MainWindowPlacementSaved = ReadBool(ini, "Application", "MainWindowPlacementSaved", false);
             app.MainWindowX = ReadInt(ini, "Application", "MainWindowX", app.MainWindowX, -100000, 100000);
             app.MainWindowY = ReadInt(ini, "Application", "MainWindowY", app.MainWindowY, -100000, 100000);
@@ -178,6 +181,7 @@ namespace CmdsManager.Infrastructure.Configuration
             app.ConsoleTabBackgroundOpacity = ReadInt(ini, "Application", "ConsoleTabBackgroundOpacity", app.ConsoleTabBackgroundOpacity, 0, 100);
             app.ConsoleActiveTabBackgroundColor = ini.Get("Application", "ConsoleActiveTabBackgroundColor", app.ConsoleActiveTabBackgroundColor);
             app.ConsoleActiveTabBackgroundOpacity = ReadInt(ini, "Application", "ConsoleActiveTabBackgroundOpacity", app.ConsoleActiveTabBackgroundOpacity, 0, 100);
+            ReadHotkeys(ini, app);
 
             result.Defaults = ReadLaunchProfile(ini, "Defaults", new LaunchProfile(), false);
             result.PowerShell7Path = ini.Get("PowerShell", "PowerShell7Path", string.Empty);
@@ -210,6 +214,18 @@ namespace CmdsManager.Infrastructure.Configuration
             }
 
             return result;
+        }
+
+        private static void ReadHotkeys(IniDocument ini, ApplicationSettings settings)
+        {
+            if (!ini.HasSection("Hotkeys")) return;
+            foreach (HotkeyAction action in Enum.GetValues(typeof(HotkeyAction)))
+            {
+                var defaults = HotkeySettings.CreateDefaultBinding(action);
+                var binding = settings.Hotkeys[action];
+                binding.Enabled = ReadBool(ini, "Hotkeys", action + "Enabled", defaults.Enabled);
+                binding.Gesture = ini.Get("Hotkeys", action.ToString(), defaults.Gesture).Trim();
+            }
         }
 
         private static LaunchProfile ReadLaunchProfile(IniDocument ini, string section, LaunchProfile fallback, bool includeAutoStart)
@@ -276,6 +292,13 @@ namespace CmdsManager.Infrastructure.Configuration
             ini.Set("Application", "ConsoleActiveTabBackgroundColor", app.ConsoleActiveTabBackgroundColor ?? "#1C1C1C");
             ini.Set("Application", "ConsoleActiveTabBackgroundOpacity", app.ConsoleActiveTabBackgroundOpacity);
 
+            foreach (HotkeyAction action in Enum.GetValues(typeof(HotkeyAction)))
+            {
+                var binding = app.Hotkeys[action];
+                ini.Set("Hotkeys", action + "Enabled", Bool(binding.Enabled));
+                ini.Set("Hotkeys", action.ToString(), binding.Gesture ?? HotkeySettings.DefaultGesture(action));
+            }
+
             WriteLaunchProfile(ini, "Defaults", configuration.Defaults, false);
             ini.Set("PowerShell", "PowerShell7Path", configuration.PowerShell7Path ?? string.Empty);
 
@@ -329,7 +352,8 @@ namespace CmdsManager.Infrastructure.Configuration
 
         private static void ValidateConfiguration(AppConfiguration configuration)
         {
-            if (configuration.Application == null || configuration.Defaults == null || configuration.Localization == null || configuration.Scripts == null)
+            if (configuration.Application == null || configuration.Application.Hotkeys == null ||
+                configuration.Defaults == null || configuration.Localization == null || configuration.Scripts == null)
             {
                 throw new ConfigurationValidationException("Application", "", "configuration object is incomplete");
             }
@@ -348,6 +372,8 @@ namespace CmdsManager.Infrastructure.Configuration
             {
                 throw new ConfigurationValidationException("Application", "EditorPath", "value is required");
             }
+
+            ValidateHotkeys(configuration.Application.Hotkeys);
 
             if (string.IsNullOrWhiteSpace(configuration.Application.ConsoleFontName) || configuration.Application.ConsoleFontSize < 6f || configuration.Application.ConsoleFontSize > 48f)
             {
@@ -416,6 +442,39 @@ namespace CmdsManager.Infrastructure.Configuration
                 {
                     throw new ConfigurationValidationException("Script:" + script.Id.ToString("D"), "", "duplicate identifier");
                 }
+            }
+        }
+
+        private static void ValidateHotkeys(HotkeySettings settings)
+        {
+            var used = new Dictionary<HotkeyScope, Dictionary<ShowAppHotkeyGesture, HotkeyAction>>();
+            foreach (HotkeyScope scope in Enum.GetValues(typeof(HotkeyScope)))
+                used[scope] = new Dictionary<ShowAppHotkeyGesture, HotkeyAction>();
+
+            foreach (HotkeyAction action in Enum.GetValues(typeof(HotkeyAction)))
+            {
+                var binding = settings[action];
+                if (binding == null || string.IsNullOrWhiteSpace(binding.Gesture))
+                    throw new ConfigurationValidationException("Hotkeys", action.ToString(), "value is required");
+
+                var scope = HotkeySettings.GetScope(action);
+                ShowAppHotkeyGesture gesture;
+                if (!ShowAppHotkeyGesture.TryParse(binding.Gesture, scope == HotkeyScope.Global, out gesture))
+                {
+                    throw new ConfigurationValidationException("Hotkeys", action.ToString(),
+                        scope == HotkeyScope.Global
+                            ? "expected a modifier and a supported key, for example Ctrl+Alt+M"
+                            : "expected a supported key combination, for example F5 or Ctrl+N");
+                }
+
+                if (!binding.Enabled) continue;
+                HotkeyAction duplicate;
+                if (used[scope].TryGetValue(gesture, out duplicate))
+                {
+                    throw new ConfigurationValidationException("Hotkeys", action.ToString(),
+                        "duplicates enabled hotkey " + duplicate);
+                }
+                used[scope][gesture] = action;
             }
         }
 
@@ -579,7 +638,9 @@ namespace CmdsManager.Infrastructure.Configuration
 
             string deprecated;
             if (ini.TryGet("Strings.ru", "Settings.Warning", out deprecated) ||
-                ini.TryGet("Strings.en", "Settings.Warning", out deprecated))
+                ini.TryGet("Strings.en", "Settings.Warning", out deprecated) ||
+                ini.TryGet("Strings.ru", "Settings.ShowAppHotkey", out deprecated) ||
+                ini.TryGet("Strings.en", "Settings.ShowAppHotkey", out deprecated))
             {
                 return true;
             }
@@ -598,9 +659,23 @@ namespace CmdsManager.Infrastructure.Configuration
 
         private static void UpgradeConfiguration(AppConfiguration configuration, int loadedVersion)
         {
+            foreach (HotkeyAction action in Enum.GetValues(typeof(HotkeyAction)))
+            {
+                var binding = configuration.Application.Hotkeys[action];
+                if (string.IsNullOrWhiteSpace(binding.Gesture))
+                    binding.Gesture = HotkeySettings.DefaultGesture(action);
+            }
             if (configuration.Localization?.Languages == null) return;
             foreach (var language in configuration.Localization.Languages.Values)
+            {
                 language.Remove("Settings.Warning");
+                language.Remove("Settings.ShowAppHotkey");
+                language.Remove("Settings.ShowAppHotkeyClear");
+                language.Remove("Settings.ShowAppHotkeyHint");
+                language.Remove("Settings.ShowAppHotkeyRequired");
+                language.Remove("Settings.ShowAppHotkeyUnavailable");
+                language.Remove("Tray.ShowAppHotkeyFailed");
+            }
             ReplaceUnmodifiedString(configuration.Localization, "en", "About.Build",
                 "Build: {0}", "Built on: {0}");
             ReplaceUnmodifiedString(configuration.Localization, "ru", "About.Build",

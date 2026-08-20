@@ -9,6 +9,7 @@ using CmdsManager.Application;
 using CmdsManager.Domain;
 using CmdsManager.Infrastructure.Configuration;
 using CmdsManager.Infrastructure.Execution;
+using CmdsManager.Infrastructure.Windows;
 using CmdsManager.Presentation.Controls;
 using CmdsManager.Presentation.Theming;
 using Microsoft.Win32;
@@ -22,6 +23,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly ProcessSupervisor _supervisor;
         private readonly IScriptEditorLauncher _editor;
         private readonly IApplicationStartupRegistration _startup;
+        private readonly ShowAppHotkeyManager _showAppHotkey;
         private readonly IExecutionLog _log;
         private readonly LocalizationService _text;
         private readonly DataGridView _grid = new DataGridView();
@@ -53,6 +55,7 @@ namespace CmdsManager.Presentation.Forms
         private readonly ToolStripMenuItem _contextEditFile = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextFolder = new ToolStripMenuItem();
         private readonly ToolStripMenuItem _contextDelete = new ToolStripMenuItem();
+        private QuickLaunchForm _quickLauncher;
         private bool _refreshingGrid;
         private bool _restoringPaneLayout;
         private bool _restoringWindowPlacement;
@@ -64,16 +67,19 @@ namespace CmdsManager.Presentation.Forms
         private AppThemePalette _palette = AppThemePalette.Light();
 
         public MainForm(ConfigurationState state, ConfigurationStore store, ProcessSupervisor supervisor,
-            IScriptEditorLauncher editor, IApplicationStartupRegistration startup, IExecutionLog log, LocalizationService text)
+            IScriptEditorLauncher editor, IApplicationStartupRegistration startup, ShowAppHotkeyManager showAppHotkey,
+            IExecutionLog log, LocalizationService text)
         {
             _state = state ?? throw new ArgumentNullException(nameof(state));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
             _editor = editor ?? throw new ArgumentNullException(nameof(editor));
             _startup = startup ?? throw new ArgumentNullException(nameof(startup));
+            _showAppHotkey = showAppHotkey ?? throw new ArgumentNullException(nameof(showAppHotkey));
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _text = text ?? throw new ArgumentNullException(nameof(text));
-            _console = new ConsoleTabsControl(_text, () => Configuration.Application, ResolveConsoleWordWrap,
+            _console = new ConsoleTabsControl(_text, () => Configuration.Application,
+                () => Configuration.Application.Hotkeys, ResolveConsoleWordWrap,
                 Path.Combine(Path.GetDirectoryName(_store.ConfigPath) ?? AppDomain.CurrentDomain.BaseDirectory,
                     "logs", "console"))
                 { Dock = DockStyle.Fill };
@@ -145,7 +151,6 @@ namespace CmdsManager.Presentation.Forms
             _layoutSaveTimer.Tick += HandleLayoutSaveTimer;
             FormClosing += HandleFormClosing;
             Shown += HandleMainShown;
-            KeyDown += HandleMainKeyDown;
             Resize += HandleMainResize;
             ResizeEnd += HandleWindowResizeEnd;
 
@@ -263,6 +268,62 @@ namespace CmdsManager.Presentation.Forms
         public void ShowAbout()
         {
             using (var form = new AboutForm(_text, Configuration.Application.Theme)) form.ShowDialog(this);
+        }
+
+        public void ShowQuickLauncher()
+        {
+            if (IsDisposed) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke((Action)ShowQuickLauncher);
+                return;
+            }
+
+            if (_quickLauncher != null && !_quickLauncher.IsDisposed)
+            {
+                _quickLauncher.DialogResult = DialogResult.Cancel;
+                _quickLauncher.Close();
+                return;
+            }
+
+            var action = QuickLaunchSelectionAction.None;
+            var scriptId = Guid.Empty;
+            using (var form = new QuickLaunchForm(Configuration.Scripts, _text,
+                Configuration.Application.Theme, id => _supervisor.GetSnapshot(id)))
+            {
+                _quickLauncher = form;
+                try
+                {
+                    if (Visible && WindowState != FormWindowState.Minimized)
+                        form.ShowDialog(this);
+                    else
+                        form.ShowDialog();
+                    action = form.SelectedAction;
+                    scriptId = form.SelectedScriptId;
+                }
+                finally
+                {
+                    if (ReferenceEquals(_quickLauncher, form)) _quickLauncher = null;
+                }
+            }
+            HandleQuickLaunchSelection(action, scriptId);
+        }
+
+        internal void HandleQuickLaunchSelection(QuickLaunchSelectionAction action, Guid scriptId)
+        {
+            if (action == QuickLaunchSelectionAction.AddScript)
+            {
+                ShowFromTray();
+                AddScript();
+                return;
+            }
+            if (action != QuickLaunchSelectionAction.ActivateScript || scriptId == Guid.Empty) return;
+            if (_supervisor.IsRunning(scriptId))
+            {
+                RevealRunningScript(scriptId);
+                return;
+            }
+            RunScript(scriptId.ToString("D"));
         }
 
         protected override void Dispose(bool disposing)
@@ -491,6 +552,50 @@ namespace CmdsManager.Presentation.Forms
             catch (Exception exception) { ShowError(_text.Get("Main.StopFailed", selected.Name), exception); }
         }
 
+        private async Task RestartSelectedAsync()
+        {
+            var selected = SelectedScript;
+            if (selected == null) return;
+            try
+            {
+                if (_supervisor.IsRunning(selected.Id)) await _supervisor.StopAsync(selected.Id);
+                var current = Configuration.Scripts.FirstOrDefault(item => item.Id == selected.Id);
+                if (current == null || !current.Enabled) return;
+                _supervisor.Start(current, Configuration.PowerShell7Path);
+            }
+            catch (Exception exception)
+            {
+                ShowError(_text.Get("Main.RestartFailed", selected.Name), exception);
+            }
+        }
+
+        private void RevealRunningScript(Guid scriptId)
+        {
+            ShowFromTray();
+            var row = _grid.Rows.Cast<DataGridViewRow>()
+                .FirstOrDefault(item => item.Tag is Guid && (Guid)item.Tag == scriptId);
+            if (row == null && !string.IsNullOrWhiteSpace(_filter.Text))
+            {
+                _filter.Text = string.Empty;
+                row = _grid.Rows.Cast<DataGridViewRow>()
+                    .FirstOrDefault(item => item.Tag is Guid && (Guid)item.Tag == scriptId);
+            }
+            if (row == null)
+            {
+                RefreshGrid();
+                row = _grid.Rows.Cast<DataGridViewRow>()
+                    .FirstOrDefault(item => item.Tag is Guid && (Guid)item.Tag == scriptId);
+            }
+            if (row != null)
+            {
+                _grid.ClearSelection();
+                row.Selected = true;
+                _grid.CurrentCell = row.Cells["Name"];
+                if (row.Index >= 0) _grid.FirstDisplayedScrollingRowIndex = row.Index;
+            }
+            _console.SelectScript(scriptId);
+        }
+
         private void EditSelectedFile()
         {
             var selected = SelectedScript;
@@ -518,9 +623,11 @@ namespace CmdsManager.Presentation.Forms
                 candidate.PowerShell7Path = form.PowerShell7PathResult;
                 candidate.Localization.Language = form.LanguageResult;
                 var previousStartup = Configuration.Application.StartWithWindows;
+                var previousApplication = Configuration.Application.Clone();
                 try
                 {
                     _startup.Synchronize(candidate.Application.StartWithWindows);
+                    _showAppHotkey.Apply(candidate.Application);
                     _store.Save(candidate);
                     _state.Current = candidate;
                     _console.ApplySettings();
@@ -532,7 +639,9 @@ namespace CmdsManager.Presentation.Forms
                 {
                     try { _startup.Synchronize(previousStartup); }
                     catch (Exception rollbackException) { _log.Error("Unable to roll back the startup registration.", rollbackException); }
-                    ShowError(_text["Main.SettingsSaveFailed"], exception);
+                    try { _showAppHotkey.Apply(previousApplication); }
+                    catch (Exception rollbackException) { _log.Error("Unable to roll back the Show App Hotkey.", rollbackException); }
+                    ShowError(_text["Main.SettingsSaveFailed"], LocalizeHotkeyException(exception));
                 }
             }
         }
@@ -544,10 +653,13 @@ namespace CmdsManager.Presentation.Forms
                 MessageBox.Show(this, _text["Main.ReloadRunning"], _text["Main.Reload"], MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+            var previousStartup = Configuration.Application.StartWithWindows;
+            var previousApplication = Configuration.Application.Clone();
             try
             {
                 var reloaded = _store.Reload();
                 _startup.Synchronize(reloaded.Application.StartWithWindows);
+                _showAppHotkey.Apply(reloaded.Application);
                 _state.Current = reloaded;
                 _console.ApplySettings();
                 ApplyTheme();
@@ -555,7 +667,24 @@ namespace CmdsManager.Presentation.Forms
                 ApplyConsolePaneHeight();
                 _log.Information("Configuration reloaded from disk.");
             }
-            catch (Exception exception) { ShowError(_text["Main.ReloadFailed"], exception); }
+            catch (Exception exception)
+            {
+                try { _startup.Synchronize(previousStartup); }
+                catch (Exception rollbackException) { _log.Error("Unable to roll back the startup registration.", rollbackException); }
+                try { _showAppHotkey.Apply(previousApplication); }
+                catch (Exception rollbackException) { _log.Error("Unable to roll back the Show App Hotkey.", rollbackException); }
+                ShowError(_text["Main.ReloadFailed"], LocalizeHotkeyException(exception));
+            }
+        }
+
+        private Exception LocalizeHotkeyException(Exception exception)
+        {
+            var registration = exception as ShowAppHotkeyRegistrationException;
+            return registration == null
+                ? exception
+                : new InvalidOperationException(
+                    _text.Get("Settings.GlobalHotkeyUnavailable",
+                        _text["Hotkey." + registration.Action], registration.Gesture), registration);
         }
 
         private void SaveConfiguration(AppConfiguration candidate)
@@ -718,14 +847,45 @@ namespace CmdsManager.Presentation.Forms
                 : scriptId;
         }
 
-        private void HandleMainKeyDown(object sender, KeyEventArgs args)
+        protected override bool ProcessCmdKey(ref Message message, Keys keyData)
         {
-            if (args.KeyCode != Keys.F11) return;
-            if (_console.ToggleSelectedTabFullScreen())
+            if (TryHandleApplicationHotkey(keyData)) return true;
+            return base.ProcessCmdKey(ref message, keyData);
+        }
+
+        private bool TryHandleApplicationHotkey(Keys keyData)
+        {
+            if (_filter.TextBox.Focused && (keyData & Keys.KeyCode) == Keys.Delete &&
+                (keyData & Keys.Modifiers) == Keys.None)
+                return false;
+
+            if (MatchesHotkey(HotkeyAction.StartSelected, keyData)) { StartSelected(); return true; }
+            if (MatchesHotkey(HotkeyAction.StopSelected, keyData)) { _ = StopSelectedAsync(); return true; }
+            if (MatchesHotkey(HotkeyAction.RestartSelected, keyData)) { _ = RestartSelectedAsync(); return true; }
+            if (MatchesHotkey(HotkeyAction.AddScript, keyData)) { AddScript(); return true; }
+            if (MatchesHotkey(HotkeyAction.EditScript, keyData)) { EditSelected(); return true; }
+            if (MatchesHotkey(HotkeyAction.DeleteScript, keyData)) { _ = DeleteSelectedAsync(); return true; }
+            if (MatchesHotkey(HotkeyAction.OpenSettings, keyData)) { OpenSettings(); return true; }
+            if (MatchesHotkey(HotkeyAction.NextConsoleTab, keyData)) return _console.SelectAdjacentTab(1);
+            if (MatchesHotkey(HotkeyAction.PreviousConsoleTab, keyData)) return _console.SelectAdjacentTab(-1);
+            if (MatchesHotkey(HotkeyAction.CloseConsoleTab, keyData)) return _console.CloseActiveTab();
+            if (MatchesHotkey(HotkeyAction.ToggleConsoleDetach, keyData)) return _console.ToggleActiveTabDetached();
+            if (MatchesHotkey(HotkeyAction.ToggleConsolePane, keyData))
             {
-                args.Handled = true;
-                args.SuppressKeyPress = true;
+                ToggleConsolePaneMaximized();
+                return true;
             }
+            if (MatchesHotkey(HotkeyAction.ToggleConsoleFullScreen, keyData))
+                return _console.ToggleSelectedTabFullScreen();
+            return false;
+        }
+
+        private bool MatchesHotkey(HotkeyAction action, Keys keyData)
+        {
+            var binding = Configuration.Application.Hotkeys[action];
+            if (!binding.Enabled) return false;
+            ShowAppHotkeyGesture gesture;
+            return ShowAppHotkeyGesture.TryParse(binding.Gesture, false, out gesture) && gesture.Matches(keyData);
         }
 
         private void HandleMainResize(object sender, EventArgs args)

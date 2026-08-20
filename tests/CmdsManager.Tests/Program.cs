@@ -16,6 +16,7 @@ using CmdsManager.Infrastructure.Logging;
 using CmdsManager.Infrastructure.Windows;
 using CmdsManager.Presentation.Forms;
 using CmdsManager.Presentation.Controls;
+using CmdsManager.Presentation.Theming;
 
 namespace CmdsManager.Tests
 {
@@ -28,6 +29,7 @@ namespace CmdsManager.Tests
         {
             Run("INI parser", TestIniParser);
             Run("Configuration round-trip and conflict", TestConfigurationStore);
+            Run("Configurable global and local hotkeys", TestShowAppHotkey);
             Run("Bilingual release user guide", TestReleaseUserGuide);
             Run("Script validation and command line", TestCommandBuilder);
             Run("Managed process execution", TestProcessExecution);
@@ -89,6 +91,10 @@ namespace CmdsManager.Tests
                 configuration.Application.ConsoleBufferSizeKb = 512;
                 configuration.Application.ConsoleAutoRecord = true;
                 configuration.Application.ConsoleLogMaxSizeMb = 12;
+                configuration.Application.ShowAppHotkeyEnabled = true;
+                configuration.Application.ShowAppHotkey = "Ctrl+Alt+M";
+                configuration.Application.Hotkeys[HotkeyAction.QuickLaunch].Enabled = true;
+                configuration.Application.Hotkeys[HotkeyAction.QuickLaunch].Gesture = "Ctrl+Alt+Space";
                 configuration.Application.ConsoleForegroundColor = "#A1B2C3";
                 configuration.Application.ConsoleBackgroundColor = "#102030";
                 configuration.Application.ConsoleBackgroundOpacity = 82;
@@ -134,6 +140,10 @@ namespace CmdsManager.Tests
                 Assert(reloaded.Localization.Languages.ContainsKey("ru") && reloaded.Localization.Languages.ContainsKey("en"), "Russian and English string tables");
                 Equal("Start", reloaded.Localization.Languages["en"]["Main.Start"], "English string");
                 Equal("Execution state indicator", reloaded.Localization.Languages["en"]["Main.Column.ActivityHint"], "activity indicator string");
+                Equal("Show App", reloaded.Localization.Languages["en"]["Hotkey.ShowApp"],
+                    "English Show App label");
+                Equal("Открыть приложение", reloaded.Localization.Languages["ru"]["Hotkey.ShowApp"],
+                    "Russian Show App label");
                 Equal(0, reloaded.Localization.Languages["ru"].Keys.Except(reloaded.Localization.Languages["en"].Keys, StringComparer.OrdinalIgnoreCase).Count(), "every Russian key has an English value");
                 Equal(0, reloaded.Localization.Languages["en"].Keys.Except(reloaded.Localization.Languages["ru"].Keys, StringComparer.OrdinalIgnoreCase).Count(), "every English key has a Russian value");
                 Equal(11.5f, reloaded.Application.ConsoleFontSize, "console font size");
@@ -141,6 +151,12 @@ namespace CmdsManager.Tests
                 Equal(512, reloaded.Application.ConsoleBufferSizeKb, "console buffer size");
                 Equal(true, reloaded.Application.ConsoleAutoRecord, "automatic console recording");
                 Equal(12, reloaded.Application.ConsoleLogMaxSizeMb, "console log size limit");
+                Equal(true, reloaded.Application.ShowAppHotkeyEnabled, "Show App Hotkey is enabled");
+                Equal("Ctrl+Alt+M", reloaded.Application.ShowAppHotkey, "Show App Hotkey combination");
+                Equal(true, reloaded.Application.Hotkeys[HotkeyAction.QuickLaunch].Enabled,
+                    "Quick Launch global hotkey is enabled");
+                Equal("Ctrl+Alt+Space", reloaded.Application.Hotkeys[HotkeyAction.QuickLaunch].Gesture,
+                    "Quick Launch global hotkey combination");
                 Equal("#A1B2C3", reloaded.Application.ConsoleForegroundColor, "console foreground color");
                 Equal("#102030", reloaded.Application.ConsoleBackgroundColor, "console background color");
                 Equal(82, reloaded.Application.ConsoleBackgroundOpacity, "console background opacity");
@@ -160,8 +176,10 @@ namespace CmdsManager.Tests
                 Assert(savedText.Contains("[Strings.ru]") && savedText.Contains("[Strings.en]"), "localization is stored in INI");
                 Assert(savedText.Contains("MainWindowPlacementSaved=true") && savedText.Contains("WordWrap=true") &&
                     savedText.Contains("ConsoleBufferSizeKb=512") && savedText.Contains("ConsoleAutoRecord=true") &&
-                    savedText.Contains("ConsoleLogMaxSizeMb=12"),
-                    "window placement, console limits, recording, and script word wrap are stored in INI");
+                    savedText.Contains("ConsoleLogMaxSizeMb=12") &&
+                    savedText.Contains("[Hotkeys]") && savedText.Contains("ShowAppEnabled=true") &&
+                    savedText.Contains("ShowApp=Ctrl+Alt+M") && savedText.Contains("QuickLaunchEnabled=true"),
+                    "window placement, console limits, recording, hotkey, and script word wrap are stored in INI");
 
                 reloaded.Scripts[0].Name = "Second save";
                 store.Save(reloaded);
@@ -174,7 +192,7 @@ namespace CmdsManager.Tests
                 var legacyPath = Path.Combine(directory, "Legacy.ini");
                 File.WriteAllText(legacyPath, "[Application]\r\nConfigVersion=1\r\n", new UTF8Encoding(false));
                 var legacy = new ConfigurationStore(legacyPath).LoadOrCreate();
-                Equal(9, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
+                Equal(12, legacy.Application.ConfigVersion, "legacy configuration version is upgraded");
                 Assert(File.ReadAllText(legacyPath, Encoding.UTF8).Contains("[Strings.ru]"), "legacy configuration receives localization strings");
 
                 var version2Path = Path.Combine(directory, "Version2.ini");
@@ -184,7 +202,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nScript.Encoding.Auto=Авто (OEM Windows)\r\n",
                     new UTF8Encoding(false));
                 var version2 = new ConfigurationStore(version2Path).LoadOrCreate();
-                Equal(9, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
+                Equal(12, version2.Application.ConfigVersion, "version 2 configuration is upgraded");
                 Equal("Auto (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["en"]["Script.Encoding.Auto"],
                     "old default English Auto label is migrated");
                 Equal("Авто (UTF-8/Windows-1251/OEM)", version2.Localization.Languages["ru"]["Script.Encoding.Auto"],
@@ -198,7 +216,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nSettings.Title=Настройки CmdsManager\r\n",
                     new UTF8Encoding(false));
                 var version5 = new ConfigurationStore(version5Path).LoadOrCreate();
-                Equal(9, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
+                Equal(12, version5.Application.ConfigVersion, "version 5 configuration is upgraded");
                 Equal("Cmds Manager settings", version5.Localization.Languages["en"]["Settings.Title"],
                     "old default English brand is migrated");
                 Equal("Настройки Cmds Manager", version5.Localization.Languages["ru"]["Settings.Title"],
@@ -207,7 +225,7 @@ namespace CmdsManager.Tests
                 var version6Path = Path.Combine(directory, "Version6.ini");
                 File.WriteAllText(version6Path, "[Application]\r\nConfigVersion=6\r\n", new UTF8Encoding(false));
                 var version6 = new ConfigurationStore(version6Path).LoadOrCreate();
-                Equal(9, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
+                Equal(12, version6.Application.ConfigVersion, "version 6 configuration is upgraded");
                 Equal(ApplicationTheme.System, version6.Application.Theme,
                     "existing installations default to the system application theme");
                 Assert(File.ReadAllText(version6Path, Encoding.UTF8).Contains("Theme=System"),
@@ -223,7 +241,7 @@ namespace CmdsManager.Tests
                     "Name=Version 7 script\r\nPath=" + scriptPath + "\r\n",
                     new UTF8Encoding(false));
                 var version7 = new ConfigurationStore(version7Path).LoadOrCreate();
-                Equal(9, version7.Application.ConfigVersion, "version 7 configuration is upgraded");
+                Equal(12, version7.Application.ConfigVersion, "version 7 configuration is upgraded");
                 Equal(false, version7.Scripts[0].Launch.WordWrap,
                     "existing scripts receive the default disabled word-wrap setting");
                 var version7Text = File.ReadAllText(version7Path, Encoding.UTF8);
@@ -240,7 +258,7 @@ namespace CmdsManager.Tests
                     "[Strings.ru]\r\nAbout.Build=Сборка: {0}\r\n",
                     new UTF8Encoding(false));
                 var version8 = new ConfigurationStore(version8Path).LoadOrCreate();
-                Equal(9, version8.Application.ConfigVersion, "version 8 configuration is upgraded");
+                Equal(12, version8.Application.ConfigVersion, "version 8 configuration is upgraded");
                 Equal(256, version8.Application.ConsoleBufferSizeKb, "version 8 receives the default console buffer");
                 Equal(false, version8.Application.ConsoleAutoRecord, "version 8 keeps automatic recording disabled");
                 Equal(50, version8.Application.ConsoleLogMaxSizeMb, "version 8 receives the default console log limit");
@@ -252,7 +270,145 @@ namespace CmdsManager.Tests
                 Assert(version8Text.Contains("About.Build=Built on: {0}") &&
                     version8Text.Contains("About.Build=Собрано: {0}"),
                     "refreshed build labels are persisted to the INI file");
+
+                var version9Path = Path.Combine(directory, "Version9.ini");
+                File.WriteAllText(version9Path, "[Application]\r\nConfigVersion=9\r\n", new UTF8Encoding(false));
+                var version9 = new ConfigurationStore(version9Path).LoadOrCreate();
+                Equal(12, version9.Application.ConfigVersion, "version 9 configuration is upgraded");
+                Equal(false, version9.Application.ShowAppHotkeyEnabled,
+                    "version 9 keeps Show App Hotkey disabled by default");
+                Equal("Ctrl+Alt+M", version9.Application.ShowAppHotkey,
+                    "version 9 receives the default Show App Hotkey combination");
+                var version9Text = File.ReadAllText(version9Path, Encoding.UTF8);
+                Assert(version9Text.Contains("[Hotkeys]") && version9Text.Contains("ShowAppEnabled=false") &&
+                    version9Text.Contains("ShowApp=Ctrl+Alt+M"),
+                    "version 9 migration writes Show App Hotkey settings");
+
+                var version10Path = Path.Combine(directory, "Version10.ini");
+                File.WriteAllText(version10Path,
+                    "[Application]\r\nConfigVersion=10\r\nShowAppHotkeyEnabled=false\r\nShowAppHotkey=\r\n",
+                    new UTF8Encoding(false));
+                var version10 = new ConfigurationStore(version10Path).LoadOrCreate();
+                Equal(12, version10.Application.ConfigVersion, "version 10 configuration is upgraded");
+                Equal(false, version10.Application.ShowAppHotkeyEnabled,
+                    "version 10 keeps Show App Hotkey disabled by default");
+                Equal("Ctrl+Alt+M", version10.Application.ShowAppHotkey,
+                    "version 10 empty hotkey is migrated to the default combination");
+
+                var version11Path = Path.Combine(directory, "Version11.ini");
+                File.WriteAllText(version11Path,
+                    "[Application]\r\nConfigVersion=11\r\n" +
+                    "ShowAppHotkeyEnabled=true\r\nShowAppHotkey=Ctrl+Shift+M\r\n" +
+                    "[Localization]\r\nLanguage=ru\r\n" +
+                    "[Strings.en]\r\nSettings.ShowAppHotkey=Show App Hotkey\r\n" +
+                    "[Strings.ru]\r\nSettings.ShowAppHotkey=Хоткей Показать приложение\r\n",
+                    new UTF8Encoding(false));
+                var version11 = new ConfigurationStore(version11Path).LoadOrCreate();
+                Equal(12, version11.Application.ConfigVersion, "version 11 configuration is upgraded");
+                Equal(true, version11.Application.Hotkeys[HotkeyAction.ShowApp].Enabled,
+                    "version 11 keeps the configured Show App hotkey enabled");
+                Equal("Ctrl+Shift+M", version11.Application.Hotkeys[HotkeyAction.ShowApp].Gesture,
+                    "version 11 keeps the configured Show App combination");
+                Equal(false, version11.Application.Hotkeys[HotkeyAction.QuickLaunch].Enabled,
+                    "new global hotkeys stay disabled after version 11 migration");
+                Equal(true, version11.Application.Hotkeys[HotkeyAction.StartSelected].Enabled,
+                    "new application hotkeys receive enabled defaults after version 11 migration");
+                var version11Text = File.ReadAllText(version11Path, Encoding.UTF8);
+                Assert(version11Text.Contains("[Hotkeys]") &&
+                    version11Text.Contains("ShowAppEnabled=true") &&
+                    version11Text.Contains("ShowApp=Ctrl+Shift+M") &&
+                    version11Text.Contains("QuickLaunchEnabled=false") &&
+                    version11Text.Contains("StartSelectedEnabled=true"),
+                    "version 11 migration writes all hotkeys to the dedicated section");
+                Assert(!version11Text.Contains("ShowAppHotkeyEnabled=") &&
+                    !version11Text.Contains("ShowAppHotkey=") &&
+                    !version11Text.Contains("Settings.ShowAppHotkey="),
+                    "version 11 migration removes obsolete Show App keys and labels");
             });
+        }
+
+        private static void TestShowAppHotkey()
+        {
+            ShowAppHotkeyGesture gesture;
+            Assert(ShowAppHotkeyGesture.TryParse("win + shift + f12", out gesture),
+                "Win hotkey syntax is parsed case-insensitively");
+            Equal("Shift+Win+F12", gesture.ToString(), "hotkey syntax is normalized");
+            Assert(ShowAppHotkeyGesture.TryParse("Ctrl+Alt+M", out gesture),
+                "letter hotkey syntax is parsed");
+            Equal(Keys.M, gesture.KeyCode, "hotkey key code");
+            Assert(!ShowAppHotkeyGesture.TryParse("M", out gesture),
+                "a global hotkey requires a modifier");
+            Assert(!ShowAppHotkeyGesture.TryParse("Ctrl+Ctrl+M", out gesture),
+                "duplicate modifiers are rejected");
+            Assert(ShowAppHotkeyGesture.TryParse("F5", false, out gesture) && gesture.KeyCode == Keys.F5,
+                "local hotkeys can use a key without modifiers");
+            Assert(ShowAppHotkeyGesture.TryParse("Delete", false, out gesture) && gesture.KeyCode == Keys.Delete,
+                "Delete is supported as a configurable local hotkey");
+            Assert(ShowAppHotkeyGesture.TryParse("Ctrl+Comma", false, out gesture) && gesture.KeyCode == Keys.Oemcomma,
+                "punctuation keys use stable INI names");
+
+            var native = new FakeShowAppHotkeyNativeApi();
+            using (var manager = new ShowAppHotkeyManager(native))
+            {
+                var first = new ApplicationSettings
+                {
+                    ShowAppHotkeyEnabled = true,
+                    ShowAppHotkey = "Ctrl+Alt+M"
+                };
+                manager.Apply(first);
+                Equal("Ctrl+Alt+M", manager.RegisteredGesture, "configured hotkey is registered");
+                Equal(1, native.Registrations.Count, "one Win32 hotkey registration is active");
+                Assert((native.Registrations.Values.Single().Modifiers & 0x4000u) != 0,
+                    "MOD_NOREPEAT is included in the Win32 registration");
+
+                var pressed = 0;
+                manager.Pressed += (sender, args) => pressed++;
+                var activeIdentifier = native.Registrations.Keys.Single();
+                manager.ProcessHotkeyMessage(activeIdentifier + 1);
+                Equal(0, pressed, "unrelated WM_HOTKEY messages are ignored");
+                manager.ProcessHotkeyMessage(activeIdentifier);
+                Equal(1, pressed, "the active WM_HOTKEY message raises the show event");
+
+                first.Hotkeys[HotkeyAction.QuickLaunch].Enabled = true;
+                first.Hotkeys[HotkeyAction.QuickLaunch].Gesture = "Ctrl+Alt+Space";
+                first.Hotkeys[HotkeyAction.EmergencyStopAll].Enabled = true;
+                first.Hotkeys[HotkeyAction.EmergencyStopAll].Gesture = "Ctrl+Alt+Shift+F12";
+                manager.Apply(first);
+                Equal(3, native.Registrations.Count, "all enabled global hotkeys are registered");
+                Equal("Ctrl+Alt+Space", manager.GetRegisteredGesture(HotkeyAction.QuickLaunch),
+                    "Quick Launch registration is exposed");
+                Equal("Ctrl+Alt+Shift+F12", manager.GetRegisteredGesture(HotkeyAction.EmergencyStopAll),
+                    "Emergency Stop All registration is exposed");
+                var quickLaunchPressed = 0;
+                var emergencyPressed = 0;
+                manager.QuickLaunchPressed += (sender, args) => quickLaunchPressed++;
+                manager.EmergencyStopAllPressed += (sender, args) => emergencyPressed++;
+                var quickIdentifier = native.Registrations.Single(item =>
+                    item.Value.VirtualKey == (uint)Keys.Space).Key;
+                var emergencyIdentifier = native.Registrations.Single(item =>
+                    item.Value.VirtualKey == (uint)Keys.F12).Key;
+                manager.ProcessHotkeyMessage(quickIdentifier);
+                manager.ProcessHotkeyMessage(emergencyIdentifier);
+                Equal(1, quickLaunchPressed, "Quick Launch WM_HOTKEY raises its event");
+                Equal(1, emergencyPressed, "Emergency Stop All WM_HOTKEY raises its event");
+
+                native.FailNextRegistration = true;
+                var collision = new ApplicationSettings
+                {
+                    ShowAppHotkeyEnabled = true,
+                    ShowAppHotkey = "Ctrl+Shift+F12"
+                };
+                Expect<ShowAppHotkeyRegistrationException>(() => manager.Apply(collision),
+                    "a hotkey already used by another application");
+                Equal("Ctrl+Alt+M", manager.RegisteredGesture,
+                    "the previous hotkey remains active after a registration collision");
+                Equal(3, native.Registrations.Count,
+                    "failed replacement restores all previous global hotkeys");
+
+                manager.Apply(new ApplicationSettings());
+                Equal(string.Empty, manager.RegisteredGesture, "disabling the setting unregisters the hotkey");
+                Equal(0, native.Registrations.Count, "no Win32 registration remains when disabled");
+            }
         }
 
         private static void TestReleaseUserGuide()
@@ -261,7 +417,7 @@ namespace CmdsManager.Tests
                 @"..\..\..\..\Readme.txt"));
             Assert(File.Exists(readmePath), "release Readme.txt exists at the repository root");
             var guide = File.ReadAllText(readmePath, Encoding.UTF8);
-            Assert(guide.StartsWith("CMDS MANAGER 1.1.0", StringComparison.Ordinal),
+            Assert(guide.StartsWith("CMDS MANAGER 1.1.6", StringComparison.Ordinal),
                 "user guide identifies the stable release");
             foreach (var heading in new[]
             {
@@ -275,7 +431,7 @@ namespace CmdsManager.Tests
 
             foreach (var version in new[]
             {
-                "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
+                "1.1.6", "1.1.5", "1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.0", "0.6.6", "0.6.5", "0.6.4", "0.6.3", "0.6.2", "0.6.1", "0.6.0",
                 "0.5.1", "0.5.0", "0.4.2", "0.4.1", "0.4.0", "0.3.0", "0.2.1", "0.2.0", "0.1.0-dev"
             })
             {
@@ -287,6 +443,20 @@ namespace CmdsManager.Tests
             {
                 "ConfigVersion", "Theme", "CloseToTray", "StartMinimized", "StartWithWindows",
                 "StartHiddenWhenAutoStarted", "AutoStartScripts", "ConfirmBeforeDelete",
+                "ShowAppEnabled", "ShowApp", "QuickLaunchEnabled", "QuickLaunch",
+                "EmergencyStopAllEnabled", "EmergencyStopAll", "StartSelectedEnabled", "StartSelected",
+                "StopSelectedEnabled", "StopSelected", "RestartSelectedEnabled", "RestartSelected",
+                "AddScriptEnabled", "AddScript", "EditScriptEnabled", "EditScript",
+                "DeleteScriptEnabled", "DeleteScript", "OpenSettingsEnabled", "OpenSettings",
+                "NextConsoleTabEnabled", "NextConsoleTab", "PreviousConsoleTabEnabled", "PreviousConsoleTab",
+                "CloseConsoleTabEnabled", "CloseConsoleTab", "ToggleConsoleDetachEnabled", "ToggleConsoleDetach",
+                "ToggleConsolePaneEnabled", "ToggleConsolePane", "FindConsoleEnabled", "FindConsole",
+                "FindNextEnabled", "FindNext", "FindPreviousEnabled", "FindPrevious",
+                "ToggleScrollLockEnabled", "ToggleScrollLock", "ToggleConsoleFullScreenEnabled", "ToggleConsoleFullScreen",
+                "ToggleWordWrapEnabled", "ToggleWordWrap", "ClearConsoleEnabled", "ClearConsole",
+                "CopyConsoleSelectionEnabled", "CopyConsoleSelection", "SelectAllConsoleEnabled", "SelectAllConsole",
+                "SaveConsoleEnabled", "SaveConsole", "IncreaseConsoleFontEnabled", "IncreaseConsoleFont",
+                "DecreaseConsoleFontEnabled", "DecreaseConsoleFont", "ResetConsoleFontEnabled", "ResetConsoleFont",
                 "MainWindowPlacementSaved", "MainWindowX", "MainWindowY", "MainWindowWidth",
                 "MainWindowHeight", "MainWindowMaximized", "EditorPath", "EditorArguments", "LogLevel",
                 "LogRetentionDays", "LogScriptOutput", "ConsoleFontName", "ConsoleFontSize",
@@ -650,16 +820,44 @@ namespace CmdsManager.Tests
                 configuration.Application.Theme = ApplicationTheme.Dark;
                 var state = new ConfigurationState(configuration);
                 var text = new LocalizationService(state);
+                var quickRunningId = Guid.NewGuid();
+                var quickStoppedId = Guid.NewGuid();
+                var quickScripts = new[]
+                {
+                    new ScriptDefinition
+                    {
+                        Id = quickRunningId,
+                        Name = "Nodejs-App",
+                        Path = @"C:\Users\Test\Nodejs-App\start-app.cmd",
+                        Launch = new LaunchProfile { Interpreter = ScriptInterpreter.Cmd }
+                    },
+                    new ScriptDefinition
+                    {
+                        Id = quickStoppedId,
+                        Name = "Docker-Start",
+                        Path = @"C:\Users\Test\Docker\start.ps1",
+                        Launch = new LaunchProfile { Interpreter = ScriptInterpreter.PowerShell7 }
+                    }
+                };
                 using (var about = new AboutForm(text, ApplicationTheme.Dark))
                 using (var settings = new SettingsForm(configuration.Application, configuration.PowerShell7Path, configuration.Localization, text))
                 using (var script = new ScriptEditorForm(null, configuration.Defaults, directory, text, ApplicationTheme.Dark))
+                using (var quick = new QuickLaunchForm(quickScripts, text, ApplicationTheme.Dark, id =>
+                    new ScriptRuntimeSnapshot
+                    {
+                        ScriptId = id,
+                        State = id == quickRunningId ? ScriptRuntimeState.Running : ScriptRuntimeState.Stopped,
+                        ActiveCount = id == quickRunningId ? 1 : 0
+                    }))
                 {
                     var aboutHandle = about.Handle;
                     var settingsHandle = settings.Handle;
                     var scriptHandle = script.Handle;
+                    var quickHandle = quick.Handle;
                     about.PerformLayout();
                     settings.PerformLayout();
                     script.PerformLayout();
+                    quick.PerformLayout();
                     Assert(about.ClientSize.Width <= 580 && about.ClientSize.Height <= 300,
                         "About box remains compact with a 128 px icon");
                     Assert(settings.ClientSize.Width <= 530 && settings.ClientSize.Height <= 340, "settings dialog is narrower and compact");
@@ -669,11 +867,24 @@ namespace CmdsManager.Tests
                     Equal("Cmds Manager settings", settings.Text, "English settings title comes from INI strings");
                     Assert(settings.BackColor.GetBrightness() < 0.3f && script.BackColor.GetBrightness() < 0.3f,
                         "dark application theme reaches compact dialogs");
-                    Assert(AllControls(settings).OfType<TabControl>().Single().GetType().Name == "FluentTabControl",
+                    Assert(quick.BackColor.GetBrightness() < 0.3f,
+                        "dark application theme reaches the Quick Launch palette");
+                    var settingsTabs = AllControls(settings).OfType<TabControl>().Single(control =>
+                        control.TabPages.Cast<TabPage>().Any(page => page.Text == text["Settings.Tab.General"]));
+                    Assert(settingsTabs.GetType().Name == "FluentTabControl",
                         "settings uses the themed compact tab control");
-                    var settingsTabs = AllControls(settings).OfType<TabControl>().Single();
                     Assert(settingsTabs.TabPages.Cast<TabPage>().Any(page => page.Text == text["Settings.Tab.Console"]),
                         "settings exposes a compact console configuration page");
+                    var hotkeyPage = settingsTabs.TabPages.Cast<TabPage>()
+                        .Single(page => page.Text == text["Settings.Tab.Hotkeys"]);
+                    var appearancePage = settingsTabs.TabPages.Cast<TabPage>()
+                        .Single(page => page.Text == text["Settings.Tab.Appearance"]);
+                    Equal(settingsTabs.TabPages.IndexOf(appearancePage) + 1,
+                        settingsTabs.TabPages.IndexOf(hotkeyPage),
+                        "the Hotkeys page immediately follows Appearance");
+                    var hotkeyTabs = AllControls(hotkeyPage).OfType<TabControl>().Single();
+                    Equal(5, hotkeyTabs.TabPages.Count,
+                        "hotkeys are grouped into compact Global, Scripts, Window, Console, and Text pages");
                     var themeSelector = AllControls(settings).OfType<ComboBox>().Single(control =>
                         control.Items.Cast<object>().Select(Convert.ToString)
                             .SequenceEqual(new[] { "System", "Light", "Dark" }));
@@ -686,6 +897,85 @@ namespace CmdsManager.Tests
                         "obsolete per-user auto-start warning is removed from the language tables");
                     Assert(!AllControls(script).OfType<ScrollableControl>().Any(control => control.AutoScroll),
                         "script editor has no AutoScroll container");
+                    Equal(FormBorderStyle.None, quick.FormBorderStyle,
+                        "Quick Launch is a borderless Spotlight-style surface");
+                    Equal(FormStartPosition.Manual, quick.StartPosition,
+                        "Quick Launch uses explicit upper-center monitor positioning");
+                    var quickLoad = typeof(QuickLaunchForm).GetMethod("OnLoad",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    quickLoad.Invoke(quick, new object[] { EventArgs.Empty });
+                    Assert(quick.InitialPositionPrepared && !quick.Visible &&
+                        Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(quick.Bounds)),
+                        "Quick Launch computes its final monitor position before the first visible frame");
+                    Assert(quick.TopMost && !quick.ShowInTaskbar && quick.ClientSize.Width >= 620 &&
+                        quick.ClientSize.Width <= 760,
+                        "Quick Launch is a compact floating global launcher");
+                    Assert(quick.SearchEditor.BorderStyle == BorderStyle.None &&
+                        quick.SearchEditor.Font.SizeInPoints >= 11f &&
+                        quick.SearchEditor.Font.SizeInPoints <= 12.5f &&
+                        quick.SearchAreaHeight <= 56 &&
+                        quick.SearchEditor.AccessibleName == text["QuickLaunch.SearchPlaceholder"],
+                        "Quick Launch has a compact borderless localized search field");
+                    Assert(quick.WindowCornerRadius <= 6 && quick.ResultSelectionCornerRadius <= 4,
+                        "Quick Launch window and selection use restrained PowerToys-style corner radii");
+                    Assert(quick.UsesFourSidedShadow,
+                        "Quick Launch provides a custom symmetric four-sided shadow");
+                    Assert(!quick.ResultTitleFont.Bold,
+                        "Quick Launch script names use medium weight instead of bold");
+                    Assert(AllControls(quick).OfType<Label>().Any(label =>
+                            label.Text == text["QuickLaunch.SearchPlaceholder"]),
+                        "Quick Launch displays its localized search placeholder");
+                    Equal(DrawMode.OwnerDrawFixed, quick.ResultsList.DrawMode,
+                        "Quick Launch uses custom-drawn modern result rows");
+                    Assert(quick.ResultsList.BorderStyle == BorderStyle.None &&
+                        quick.ResultsList.ItemHeight >= 56 && quick.ResultsList.ItemHeight <= 60,
+                        "Quick Launch results avoid the native Windows list-box border");
+                    Equal(3, quick.ResultsList.Items.Count,
+                        "Quick Launch lists every enabled script followed by Add script");
+                    Assert(Convert.ToString(quick.ResultsList.Items[quick.ResultsList.Items.Count - 1])
+                            .Contains(text["QuickLaunch.AddScript"]),
+                        "Quick Launch keeps Add script as its final row");
+                    Assert(quick.ResultsList.Items.Cast<object>().Select(Convert.ToString).Any(value =>
+                            value.Contains("Nodejs-App") && value.Contains(@"C:\Users\Test\Nodejs-App\start-app.cmd") &&
+                            value.Contains("CMD") && value.Contains("Running")),
+                        "Quick Launch result accessibility includes name, path, interpreter, and runtime state");
+                    Assert(!AllControls(quick).OfType<Button>().Any(),
+                        "Quick Launch relies on keyboard-first result activation instead of dialog buttons");
+                    quick.SearchEditor.Text = "powershell 7";
+                    Equal(2, quick.ResultsList.Items.Count,
+                        "Quick Launch searches interpreter metadata and keeps Add script last");
+                    Assert(Convert.ToString(quick.ResultsList.Items[0]).Contains("Docker-Start"),
+                        "Quick Launch ranks the matching script first");
+                    quick.SearchEditor.Text = "missing-script";
+                    Equal(1, quick.ResultsList.Items.Count,
+                        "Quick Launch keeps Add script available when no existing script matches");
+                    Assert(Convert.ToString(quick.ResultsList.Items[0]).Contains(text["QuickLaunch.AddScriptHint"]),
+                        "the Add script row explains that it creates a new entry");
+                    quick.SearchEditor.Text = string.Empty;
+                    using (var scriptAction = new QuickLaunchForm(quickScripts, text, ApplicationTheme.Dark, id =>
+                        new ScriptRuntimeSnapshot { ScriptId = id, State = ScriptRuntimeState.Stopped }))
+                    {
+                        var dockerIndex = scriptAction.ResultsList.Items.Cast<object>().Select(Convert.ToString)
+                            .Select((value, index) => new { value, index })
+                            .Single(item => item.value.Contains("Docker-Start")).index;
+                        scriptAction.ActivateItemAt(dockerIndex);
+                        Equal(QuickLaunchSelectionAction.ActivateScript, scriptAction.SelectedAction,
+                            "a single-click script activation returns the script action");
+                        Equal(quickStoppedId, scriptAction.SelectedScriptId,
+                            "a single-click script activation returns the selected script identifier");
+                        Equal(DialogResult.OK, scriptAction.DialogResult,
+                            "script activation survives launcher closing as an accepted result");
+                    }
+                    using (var addAction = new QuickLaunchForm(quickScripts, text, ApplicationTheme.Dark))
+                    {
+                        addAction.ActivateItemAt(addAction.ResultsList.Items.Count - 1);
+                        Equal(QuickLaunchSelectionAction.AddScript, addAction.SelectedAction,
+                            "the final launcher row returns the Add script action");
+                        Equal(Guid.Empty, addAction.SelectedScriptId,
+                            "the Add script action is not confused with a script identifier");
+                        Equal(DialogResult.OK, addAction.DialogResult,
+                            "the Add script action survives launcher closing as an accepted result");
+                    }
                     var retention = AllControls(settings).OfType<NumericUpDown>()
                         .Single(control => control.Maximum == 3650);
                     Assert(retention.Width <= 80, "log retention field is sized for its value");
@@ -700,6 +990,79 @@ namespace CmdsManager.Tests
                     Assert(AllControls(settings).OfType<CheckBox>().Any(control =>
                             control.Text == text["Settings.ConsoleAutoRecord"]),
                         "settings exposes automatic console recording");
+                    Assert(AllControls(settings).OfType<Label>().Any(control => control.Text == "Show App"),
+                        "settings exposes the first global hotkey under its requested English name");
+                    var hotkeyBoxes = AllControls(settings).OfType<FluentHotkeyBox>().ToArray();
+                    Equal(Enum.GetValues(typeof(HotkeyAction)).Length, hotkeyBoxes.Length,
+                        "settings exposes every configurable global and local hotkey");
+                    var hotkeyBox = hotkeyBoxes.Single(control => control.AccessibleName == "Show App");
+                    Assert(hotkeyBox.Height >= 28 && hotkeyBox.Width >= 120,
+                        "Show App Hotkey uses a usable Fluent capture field: " + hotkeyBox.Size);
+                    Equal("Ctrl+Alt+M", hotkeyBox.Gesture,
+                        "Show App Hotkey field is prefilled with the default combination");
+                    var fontInput = AllControls(settings).OfType<FluentTextBox>()
+                        .Single(control => control.Text.StartsWith("Consolas,", StringComparison.Ordinal));
+                    Assert(hotkeyBox.Width <= fontInput.Width,
+                        "hotkey input does not exceed the general settings input width");
+                    Equal(1, hotkeyBoxes.Select(control => AbsoluteLeft(control, settings)).Distinct().Count(),
+                        "all hotkey inputs share one left edge across categories");
+                    Equal(1, hotkeyBoxes.Select(control => control.Width).Distinct().Count(),
+                        "all hotkey inputs have the same width");
+                    var resetButtons = AllControls(settings).OfType<Button>()
+                        .Where(control => control.Text == text["Settings.HotkeyReset"]).ToArray();
+                    Equal(hotkeyBoxes.Length, resetButtons.Length,
+                        "every hotkey row has its own Reset button");
+                    Equal(1, resetButtons.Select(control => AbsoluteLeft(control, settings)).Distinct().Count(),
+                        "all hotkey Reset buttons share one left edge");
+                    var showTable = hotkeyBox.Parent as TableLayoutPanel;
+                    var showRow = showTable.GetRow(hotkeyBox);
+                    var showCheckbox = showTable.Controls.Cast<Control>().OfType<CheckBox>()
+                        .Single(control => showTable.GetRow(control) == showRow);
+                    var showLabel = showTable.Controls.Cast<Control>().OfType<Label>()
+                        .Single(control => showTable.GetRow(control) == showRow);
+                    var showReset = showTable.Controls.Cast<Control>().OfType<Button>()
+                        .Single(control => showTable.GetRow(control) == showRow);
+                    Equal("Show App", showLabel.Text, "Show App row uses the exact English action name");
+                    Assert(showTable.ColumnStyles[1].Width > hotkeyBox.Width,
+                        "hotkey action names receive more horizontal space than capture inputs");
+                    Equal("Show App", showCheckbox.AccessibleName,
+                        "Show App checkbox retains the exact accessible action name");
+                    Equal(showRow, showTable.GetRow(showReset),
+                        "checkbox, name, input, and Reset button occupy one row");
+                    var generalPage = settingsTabs.TabPages.Cast<TabPage>()
+                        .Single(page => page.Text == text["Settings.Tab.General"]);
+                    var generalContentBottom = AllControls(generalPage).Where(control => control != generalPage)
+                        .Max(control => AbsoluteTop(control, settings) + control.Height);
+                    var settingsFooter = AllControls(settings).OfType<Button>()
+                        .Single(control => control.Text == text["Common.Save"]).Parent;
+                    Assert(generalContentBottom <= AbsoluteTop(settingsFooter, settings),
+                        "all general settings remain inside the compact page without scrolling");
+                    var russianConfiguration = configuration.Clone();
+                    russianConfiguration.Localization.Language = "ru";
+                    var russianState = new ConfigurationState(russianConfiguration);
+                    var russianText = new LocalizationService(russianState);
+                    using (var russianSettings = new SettingsForm(russianConfiguration.Application,
+                        russianConfiguration.PowerShell7Path, russianConfiguration.Localization, russianText))
+                    {
+                        var russianHandle = russianSettings.Handle;
+                        russianSettings.PerformLayout();
+                        var englishGeometry = hotkeyBoxes.ToDictionary(control => control.Gesture,
+                            control => new Rectangle(AbsoluteLeft(control, settings),
+                                AbsoluteTop(control, settings), control.Width, control.Height));
+                        var russianBoxes = AllControls(russianSettings).OfType<FluentHotkeyBox>()
+                            .ToDictionary(control => control.Gesture);
+                        foreach (var pair in englishGeometry)
+                        {
+                            var russianBox = russianBoxes[pair.Key];
+                            Equal(pair.Value.X, AbsoluteLeft(russianBox, russianSettings),
+                                "language switch preserves hotkey input X for " + pair.Key);
+                            Equal(pair.Value.Width, russianBox.Width,
+                                "language switch preserves hotkey input width for " + pair.Key);
+                        }
+                        Assert(AllControls(russianSettings).OfType<Label>().Any(control =>
+                                control.Text == "Открыть приложение"),
+                            "Russian first global hotkey name is exact");
+                    }
                     var opacityFields = AllControls(settings).OfType<NumericUpDown>()
                         .Where(control => control.Maximum == 100).ToArray();
                     Equal(3, opacityFields.Length, "appearance tab has three compact opacity fields");
@@ -810,7 +1173,7 @@ namespace CmdsManager.Tests
                         "embedded 128 px PNG icon frame is decoded without pixel corruption");
                     var aboutTitle = AllControls(about).OfType<Label>().First(control => control.Text == "Cmds Manager");
                     var aboutVersion = AllControls(about).OfType<Label>().First(control => control.Text.StartsWith("Version ", StringComparison.Ordinal));
-                    Equal("Version 1.1.0", aboutVersion.Text, "About contains the stable release version");
+                    Equal("Version 1.1.6", aboutVersion.Text, "About contains the stable release version");
                     var aboutBuild = AllControls(about).OfType<Label>()
                         .First(control => control.Text.StartsWith("Built on: ", StringComparison.Ordinal));
                     DateTime parsedBuildTimestamp;
@@ -1315,12 +1678,13 @@ namespace CmdsManager.Tests
 
                 using (var logger = new SimpleFileLogger(Path.Combine(directory, "logs"), 1))
                 using (var supervisor = new ProcessSupervisor(commandBuilder, logger, () => false))
+                using (var showAppHotkey = new ShowAppHotkeyManager())
                 using (var form = new MainForm(state, store, supervisor,
-                    new WindowsScriptEditorLauncher(commandBuilder), new NoOpStartupRegistration(), logger, text))
+                    new WindowsScriptEditorLauncher(commandBuilder), new NoOpStartupRegistration(), showAppHotkey, logger, text))
                 {
                     var formHandle = form.Handle;
                     Assert(formHandle != IntPtr.Zero, "main form handle is created for queued UI updates");
-                    Equal("Cmds Manager 1.1.0", form.Text,
+                    Equal("Cmds Manager 1.1.6", form.Text,
                         "main window title contains the spaced product name and version");
                     var grid = FindControl<DataGridView>(form);
                     Assert(grid != null && grid.Columns.Contains("Activity"), "main grid has an activity indicator column");
@@ -1486,7 +1850,7 @@ namespace CmdsManager.Tests
                         catch (ConfigurationChangedException) { return false; }
                     }, TimeSpan.FromSeconds(2)), "dragged console pane height is persisted to INI");
 
-                    supervisor.Start(script, string.Empty);
+                    form.HandleQuickLaunchSelection(QuickLaunchSelectionAction.ActivateScript, script.Id);
                     var elapsed = Stopwatch.StartNew();
                     DataGridViewRow row = null;
                     var runningVisible = false;
@@ -1523,6 +1887,19 @@ namespace CmdsManager.Tests
                     }
                     row = grid.Rows.Cast<DataGridViewRow>().First(item => script.Id.Equals(item.Tag));
                     Equal("●", Convert.ToString(row.Cells["Activity"].Value), "running marker does not blink");
+
+                    var gridFilter = toolbar.Items.OfType<ToolStripTextBox>().Single();
+                    gridFilter.Text = "Second row";
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(!grid.Rows.Cast<DataGridViewRow>().Any(item => script.Id.Equals(item.Tag)),
+                        "the running script can be hidden by the current main-grid filter");
+                    form.HandleQuickLaunchSelection(QuickLaunchSelectionAction.ActivateScript, script.Id);
+                    System.Windows.Forms.Application.DoEvents();
+                    Assert(string.IsNullOrEmpty(gridFilter.Text) && grid.SelectedRows.Count == 1 &&
+                        script.Id.Equals(grid.SelectedRows[0].Tag),
+                        "activating a running script opens the main window and reveals its console row");
+                    Assert(supervisor.IsRunning(script.Id) && supervisor.GetSnapshot(script.Id).ActiveCount == 1,
+                        "activating a running script focuses it without stopping or launching another instance");
 
                     supervisor.StopAsync(script.Id).GetAwaiter().GetResult();
                     elapsed.Restart();
@@ -1575,8 +1952,9 @@ namespace CmdsManager.Tests
 
                 using (var logger = new SimpleFileLogger(Path.Combine(directory, "logs"), 1))
                 using (var supervisor = new ProcessSupervisor(commandBuilder, logger, () => false))
+                using (var showAppHotkey = new ShowAppHotkeyManager())
                 using (var form = new MainForm(state, store, supervisor,
-                    new WindowsScriptEditorLauncher(commandBuilder), new NoOpStartupRegistration(), logger, text))
+                    new WindowsScriptEditorLauncher(commandBuilder), new NoOpStartupRegistration(), showAppHotkey, logger, text))
                 {
                     var formHandle = form.Handle;
                     var console = FindControl<ConsoleTabsControl>(form);
@@ -1935,6 +2313,42 @@ namespace CmdsManager.Tests
         {
             public string RegisteredCommand => string.Empty;
             public void Synchronize(bool enabled) { }
+        }
+
+        private sealed class FakeShowAppHotkeyNativeApi : IShowAppHotkeyNativeApi
+        {
+            internal sealed class Registration
+            {
+                internal uint Modifiers { get; set; }
+                internal uint VirtualKey { get; set; }
+            }
+
+            internal Dictionary<int, Registration> Registrations { get; } =
+                new Dictionary<int, Registration>();
+            internal bool FailNextRegistration { get; set; }
+
+            public bool Register(IntPtr window, int identifier, uint modifiers, uint virtualKey, out int errorCode)
+            {
+                if (FailNextRegistration)
+                {
+                    FailNextRegistration = false;
+                    errorCode = 1409;
+                    return false;
+                }
+
+                Registrations[identifier] = new Registration
+                {
+                    Modifiers = modifiers,
+                    VirtualKey = virtualKey
+                };
+                errorCode = 0;
+                return true;
+            }
+
+            public bool Unregister(IntPtr window, int identifier)
+            {
+                return Registrations.Remove(identifier);
+            }
         }
 
         private static void Run(string name, Action test)

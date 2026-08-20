@@ -1,4 +1,4 @@
-CMDS MANAGER 1.1.0
+CMDS MANAGER 1.1.6
 ==================
 
 Website: https://github.com/iMiKED/cmds-manager
@@ -57,6 +57,17 @@ unless the selected folder allows the application to update its INI and logs.
 - open script files in a configurable external editor;
 - start one script, all enabled scripts, or selected scripts automatically;
 - configure application auto-start for the current Windows user;
+- configure all global, application, tab, and console hotkeys on a dedicated
+  settings page, disable individual bindings, or reset them to defaults;
+- use optional global Show App, Quick Launch, and Emergency Stop All hotkeys;
+- open Quick Launch as a borderless, rounded Spotlight/PowerToys Run-style
+  surface without opening the main window first;
+- find enabled scripts by name, path, interpreter, or fuzzy text and see each
+  result's path, interpreter, live process state, and Enter action hint;
+- activate a result with one click or Enter: a stopped script starts, while a
+  running script opens the main window and selects its existing console;
+- open the script editor from the permanent Add script row at the end of Quick
+  Launch results;
 - show a static green execution indicator and detailed runtime state;
 - capture stdout and stderr in a fast, bounded console history;
 - configure how much console history is kept in memory;
@@ -162,6 +173,60 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 
 The history below is derived from the Git commits of the application.
 
+1.1.6 - 20.08.2026
+- Positioned Quick Launch before its first visible frame so it no longer jumps
+  down from the top of the screen when opened;
+- made a single click and Enter reliably activate the selected result instead of
+  losing the action while the launcher closes;
+- made inactive scripts start immediately, while active scripts safely open the
+  main window and select their existing grid row and console without stopping or
+  launching another instance;
+- added a permanent final Add script row that opens the main window and the
+  modal script editor.
+
+1.1.5 - 20.08.2026
+- Matched Quick Launch more closely to the Windows 10 PowerToys Run geometry:
+  smaller anti-aliased window corners, a shorter search row, and smaller search
+  text;
+- replaced the native lower-right drop shadow with a dependency-free layered
+  shadow rendered evenly on all four sides;
+- removed the selection accent stripe, reduced the selection corner radius, and
+  changed script names from bold to a medium font weight.
+
+1.1.4 - 20.08.2026
+- Rebuilt global Quick Launch as a borderless rounded Spotlight/PowerToys
+  Run-style surface with a large search field and compact result rows;
+- added fuzzy searching by script name, path, interpreter, and live state;
+- added interpreter badges, path details and tooltips, live process state,
+  Enter action hints, keyboard navigation, a no-results view, and a slim modern
+  scroll indicator;
+- made the global Quick Launch hotkey toggle the launcher and moved the Hotkeys
+  settings page immediately after Appearance.
+
+1.1.3 - 20.08.2026
+- Moved hotkey configuration to a dedicated compact Fluent settings page;
+- aligned the checkbox, fixed-width action name, capture input, and Reset button
+  in one stable row that does not move when the interface language changes;
+- added configurable script, tab, window, search, clipboard, save, Word Wrap,
+  Scroll Lock, full-screen, and console-font hotkeys;
+- added disabled-by-default global Quick Launch and Emergency Stop All hotkeys;
+- added the searchable Quick Launch window and advanced the INI schema to 12.
+
+1.1.2 - 19.08.2026
+- Aligned the Show App Hotkey field with the other settings inputs;
+- matched its length to the Console Font field and matched the Clear button to
+  the Choose Font button;
+- prefilled the disabled-by-default hotkey with Ctrl+Alt+M;
+- advanced the INI schema to version 11 and migrated empty legacy hotkeys.
+
+1.1.1 - 19.08.2026
+- Added the configurable global Show App Hotkey with a Fluent capture field;
+- made the hotkey always show and activate Cmds Manager without hiding an
+  already visible window;
+- retained the previous registration when a new combination is already used
+  by Windows or another application;
+- advanced the INI schema to version 10 with automatic migration.
+
 1.1.0 - 18.08.2026
 - Added a configurable console history buffer size;
 - added separate UTF-8 recording for each console with automatic start,
@@ -236,8 +301,9 @@ variables such as %SystemRoot% are expanded.
 [Application]
 
 ConfigVersion
-  INI schema version maintained by Cmds Manager. Current value: 9. Do not lower
-  it manually. Configurations from versions 1 through 8 are migrated to 9.
+  INI schema version maintained by Cmds Manager. Current value: 12. Do not
+  lower it manually. Configurations from versions 1 through 11 are migrated to
+  12.
 
 Theme
   Application shell theme: System, Light, or Dark. Default: System.
@@ -345,6 +411,106 @@ ConsoleActiveTabBackgroundColor
 
 ConsoleActiveTabBackgroundOpacity
   Active tab background opacity from 0 through 100. Default: 100.
+
+[Hotkeys]
+
+Every action has an <Action>Enabled Boolean and an <Action> key combination.
+The Settings > Hotkeys page places the checkbox, localized action name, capture
+input, and Reset button in one row. A disabled action remains visible with its
+default combination but does not react to it. Reset restores the default shown
+below. Enabled combinations must be unique within their scope.
+
+Windows global hotkeys require Ctrl, Alt, Shift, or Win plus a supported key.
+Local hotkeys may also use a standalone supported key such as F5, Delete, or
+ScrollLock. Stable names such as Comma, Plus, and Minus are used for punctuation.
+
+ShowAppEnabled / ShowApp
+  Shows and activates Cmds Manager. Defaults: false; Ctrl+Alt+M.
+
+QuickLaunchEnabled / QuickLaunch
+  Opens the searchable enabled-script launcher. Defaults: false; Ctrl+Alt+Space.
+
+EmergencyStopAllEnabled / EmergencyStopAll
+  Immediately requests all managed scripts to stop. Defaults: false;
+  Ctrl+Alt+Shift+F12.
+
+StartSelectedEnabled / StartSelected
+  Starts the selected script. Defaults: true; F5.
+
+StopSelectedEnabled / StopSelected
+  Stops the selected script. Defaults: true; Shift+F5.
+
+RestartSelectedEnabled / RestartSelected
+  Stops and starts the selected script. Defaults: true; Ctrl+Shift+F5.
+
+AddScriptEnabled / AddScript
+  Opens Add Script. Defaults: true; Ctrl+N.
+
+EditScriptEnabled / EditScript
+  Opens Edit Script for the selected entry. Defaults: true; Ctrl+E.
+
+DeleteScriptEnabled / DeleteScript
+  Deletes the selected entry using the configured confirmation rule. Defaults:
+  true; Delete. Delete continues to edit text while the toolbar filter has focus.
+
+OpenSettingsEnabled / OpenSettings
+  Opens Settings. Defaults: true; Ctrl+Comma.
+
+NextConsoleTabEnabled / NextConsoleTab
+  Selects the next embedded console tab. Defaults: true; Ctrl+Tab.
+
+PreviousConsoleTabEnabled / PreviousConsoleTab
+  Selects the previous embedded console tab. Defaults: true; Ctrl+Shift+Tab.
+
+CloseConsoleTabEnabled / CloseConsoleTab
+  Closes the active tab and stops its running process. Defaults: true; Ctrl+W.
+
+ToggleConsoleDetachEnabled / ToggleConsoleDetach
+  Detaches or reattaches the active tab without restarting it. Defaults: true;
+  Ctrl+Shift+D.
+
+ToggleConsolePaneEnabled / ToggleConsolePane
+  Maximizes or restores the console area. Defaults: true; Ctrl+Shift+M.
+
+FindConsoleEnabled / FindConsole
+  Opens search for the active console. Defaults: true; Ctrl+F.
+
+FindNextEnabled / FindNext
+  Selects the next match. Defaults: true; F3.
+
+FindPreviousEnabled / FindPrevious
+  Selects the previous match. Defaults: true; Shift+F3.
+
+ToggleScrollLockEnabled / ToggleScrollLock
+  Freezes or resumes automatic scrolling. Defaults: true; ScrollLock.
+
+ToggleConsoleFullScreenEnabled / ToggleConsoleFullScreen
+  Opens or restores the active console full screen. Defaults: true; F11. Esc
+  always remains available for leaving full screen.
+
+ToggleWordWrapEnabled / ToggleWordWrap
+  Toggles Word Wrap for the script and related child tabs. Defaults: true; Alt+Z.
+
+ClearConsoleEnabled / ClearConsole
+  Clears the active displayed history. Defaults: true; Ctrl+L.
+
+CopyConsoleSelectionEnabled / CopyConsoleSelection
+  Copies selected console text. Defaults: true; Ctrl+C.
+
+SelectAllConsoleEnabled / SelectAllConsole
+  Selects the complete console text. Defaults: true; Ctrl+A.
+
+SaveConsoleEnabled / SaveConsole
+  Saves the complete console contents as UTF-8. Defaults: true; Ctrl+S.
+
+IncreaseConsoleFontEnabled / IncreaseConsoleFont
+  Increases the active-tab font by one point. Defaults: true; Ctrl+Shift+Plus.
+
+DecreaseConsoleFontEnabled / DecreaseConsoleFont
+  Decreases the active-tab font by one point. Defaults: true; Ctrl+Minus.
+
+ResetConsoleFontEnabled / ResetConsoleFont
+  Restores the configured default console font. Defaults: true; Ctrl+0.
 
 [Defaults]
 
@@ -509,6 +675,18 @@ Files, если выбранная папка не позволяет обнов
 - запуск одного скрипта, всех активных скриптов или автоматический запуск
   отмеченных скриптов;
 - автозапуск приложения для текущего пользователя Windows;
+- настройка всех глобальных, оконных, консольных и связанных со скриптами
+  хоткеев на отдельной вкладке с возможностью отключения и сброса;
+- необязательные глобальные хоткеи «Открыть приложение», «Быстрый запуск» и
+  «Экстренно остановить всё»;
+- открытие быстрого запуска без главного окна в виде скруглённой панели без
+  заголовка в стиле Spotlight/PowerToys Run;
+- неточный поиск включённых скриптов по названию, пути и интерпретатору с выводом
+  пути, типа интерпретатора, текущего состояния процесса и подсказки Enter;
+- запуск остановленного скрипта по одному клику или Enter; для уже работающего
+  скрипта открывается главное окно и выбирается его существующая консоль;
+- открытие редактора новой записи через постоянную последнюю строку «Добавить
+  скрипт…» в результатах быстрого запуска;
 - статичный зелёный индикатор выполнения и подробное состояние процесса;
 - быстрый перехват stdout и stderr с ограниченной историей консоли;
 - настройка объёма истории, сохраняемой в каждой консоли;
@@ -615,6 +793,63 @@ https://github.com/iMiKED/cmds-manager?tab=readme-ov-file#support-the-project
 
 История составлена по Git-коммитам приложения.
 
+1.1.6 — 20.08.2026
+- Позиция быстрого запуска теперь вычисляется до первого видимого кадра, поэтому
+  окно больше не прыгает вниз от верхней границы экрана;
+- одиночный клик и Enter надёжно активируют выбранную строку: действие больше не
+  теряется при закрытии окна быстрого запуска;
+- остановленный скрипт сразу запускается, а для уже работающего скрипта безопасно
+  открывается главное окно с выбранными строкой и существующей консолью — без
+  остановки и запуска второго экземпляра;
+- последней строкой добавлено постоянное действие «Добавить скрипт…», открывающее
+  главное окно и модальный редактор новой записи.
+
+1.1.5 — 20.08.2026
+- Геометрия окна быстрого запуска приближена к PowerToys Run в Windows 10:
+  уменьшены и сглажены углы окна, высота строки поиска и размер поискового
+  шрифта;
+- стандартная тень снизу и справа заменена лёгкой встроенной тенью, равномерно
+  отображаемой со всех четырёх сторон без дополнительных зависимостей;
+- убрана цветная полоса выбранной строки, уменьшен радиус её углов, а жирное
+  название скрипта заменено начертанием средней насыщенности.
+
+1.1.4 — 20.08.2026
+- Глобальное окно быстрого запуска переработано в стиле Spotlight/PowerToys Run:
+  убраны рамка и заголовок, добавлены скругление, тень, крупный поиск и компактные
+  строки результатов;
+- добавлен неточный поиск по названию, пути, интерпретатору и текущему состоянию;
+- в результатах показаны значок интерпретатора, путь с полной подсказкой, живое
+  состояние процесса и подсказка Enter; добавлены клавиатурная навигация,
+  состояние без результатов и тонкий современный индикатор прокрутки;
+- повторный глобальный хоткей закрывает launcher, а вкладка «Хоткеи» перемещена
+  сразу после вкладки «Внешний вид».
+
+1.1.3 — 20.08.2026
+- Настройки хоткеев перенесены на отдельную компактную Fluent-вкладку;
+- чекбокс, название фиксированной ширины, поле захвата и кнопка «Сбросить»
+  выровнены в одной строке без изменения геометрии при переключении языка;
+- добавлены настраиваемые хоткеи скриптов, вкладок, окна, поиска, буфера обмена,
+  сохранения, Word Wrap, Scroll Lock, полноэкранного режима и шрифта консоли;
+- добавлены выключенные по умолчанию глобальные хоткеи «Быстрый запуск» и
+  «Экстренно остановить всё»;
+- добавлено окно быстрого запуска, схема INI обновлена до версии 12.
+
+1.1.2 — 19.08.2026
+- Поле хоткея «Показать приложение» выровнено с остальными инпутами настроек;
+- его длина приведена к длине поля «Шрифт консоли», а кнопка «Очистить» — к
+  длине кнопки «Выбрать…»;
+- в выключенный по умолчанию хоткей предварительно подставлено Ctrl+Alt+M;
+- схема INI обновлена до версии 11 с миграцией пустых старых значений хоткея.
+
+1.1.1 — 19.08.2026
+- Добавлен настраиваемый глобальный хоткей «Показать приложение» с Fluent-полем
+  захвата сочетания;
+- хоткей всегда показывает и активирует Cmds Manager, не скрывая уже видимое
+  окно;
+- если новое сочетание занято Windows или другой программой, сохраняется
+  предыдущая регистрация;
+- схема INI обновлена до версии 10 с автоматической миграцией.
+
 1.1.0 — 18.08.2026
 - Добавлена настройка размера отображаемого буфера консоли;
 - добавлена отдельная UTF-8-запись каждой консоли с автоматическим запуском,
@@ -689,8 +924,8 @@ INI хранится рядом с CmdsManager.exe в UTF-8. Логически�
 [Application]
 
 ConfigVersion
-  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 9.
-  Не уменьшайте её вручную. Конфигурации версий 1–8 мигрируют в версию 9.
+  Версия схемы INI, которой управляет Cmds Manager. Текущее значение: 12.
+  Не уменьшайте её вручную. Конфигурации версий 1–11 мигрируют в версию 12.
 
 Theme
   Тема оболочки: System, Light или Dark. По умолчанию: System.
@@ -800,6 +1035,115 @@ ConsoleActiveTabBackgroundColor
 
 ConsoleActiveTabBackgroundOpacity
   Непрозрачность фона активной вкладки: 0–100. По умолчанию: 100.
+
+[Hotkeys]
+
+Для каждого действия предусмотрены логический параметр <Action>Enabled и
+сочетание <Action>. На странице «Настройки > Хоткеи» чекбокс, локализованное
+название, поле захвата и кнопка «Сбросить» находятся в одной строке. Отключённое
+действие сохраняет видимое сочетание, но не реагирует на него. «Сбросить»
+возвращает указанное ниже значение. Активные сочетания одного контекста должны
+быть уникальны.
+
+Глобальные хоткеи Windows требуют Ctrl, Alt, Shift либо Win и поддерживаемую
+обычную клавишу. Локальные хоткеи могут состоять только из F5, Delete, ScrollLock
+или другой поддерживаемой клавиши. Для знаков используются устойчивые имена
+Comma, Plus и Minus.
+
+ShowAppEnabled / ShowApp
+  Показывает и активирует Cmds Manager. По умолчанию: false; Ctrl+Alt+M.
+
+QuickLaunchEnabled / QuickLaunch
+  Открывает поиск и запуск активного скрипта. По умолчанию: false;
+  Ctrl+Alt+Space.
+
+EmergencyStopAllEnabled / EmergencyStopAll
+  Немедленно запрашивает остановку всех управляемых скриптов. По умолчанию:
+  false; Ctrl+Alt+Shift+F12.
+
+StartSelectedEnabled / StartSelected
+  Запускает выбранный скрипт. По умолчанию: true; F5.
+
+StopSelectedEnabled / StopSelected
+  Останавливает выбранный скрипт. По умолчанию: true; Shift+F5.
+
+RestartSelectedEnabled / RestartSelected
+  Останавливает и снова запускает выбранный скрипт. По умолчанию: true;
+  Ctrl+Shift+F5.
+
+AddScriptEnabled / AddScript
+  Открывает добавление скрипта. По умолчанию: true; Ctrl+N.
+
+EditScriptEnabled / EditScript
+  Открывает изменение выбранной записи. По умолчанию: true; Ctrl+E.
+
+DeleteScriptEnabled / DeleteScript
+  Удаляет выбранную запись с учётом настройки подтверждения. По умолчанию: true;
+  Delete. В поле фильтра Delete продолжает редактировать текст.
+
+OpenSettingsEnabled / OpenSettings
+  Открывает настройки. По умолчанию: true; Ctrl+Comma.
+
+NextConsoleTabEnabled / NextConsoleTab
+  Выбирает следующую встроенную вкладку. По умолчанию: true; Ctrl+Tab.
+
+PreviousConsoleTabEnabled / PreviousConsoleTab
+  Выбирает предыдущую встроенную вкладку. По умолчанию: true; Ctrl+Shift+Tab.
+
+CloseConsoleTabEnabled / CloseConsoleTab
+  Закрывает активную вкладку и останавливает работающий процесс. По умолчанию:
+  true; Ctrl+W.
+
+ToggleConsoleDetachEnabled / ToggleConsoleDetach
+  Отделяет или возвращает вкладку без перезапуска процесса. По умолчанию: true;
+  Ctrl+Shift+D.
+
+ToggleConsolePaneEnabled / ToggleConsolePane
+  Разворачивает или восстанавливает область консолей. По умолчанию: true;
+  Ctrl+Shift+M.
+
+FindConsoleEnabled / FindConsole
+  Открывает поиск в активной консоли. По умолчанию: true; Ctrl+F.
+
+FindNextEnabled / FindNext
+  Выбирает следующее совпадение. По умолчанию: true; F3.
+
+FindPreviousEnabled / FindPrevious
+  Выбирает предыдущее совпадение. По умолчанию: true; Shift+F3.
+
+ToggleScrollLockEnabled / ToggleScrollLock
+  Фиксирует или продолжает автоматическую прокрутку. По умолчанию: true;
+  ScrollLock.
+
+ToggleConsoleFullScreenEnabled / ToggleConsoleFullScreen
+  Открывает или восстанавливает активную консоль на весь экран. По умолчанию:
+  true; F11. Клавиша Esc всегда позволяет выйти из полноэкранного режима.
+
+ToggleWordWrapEnabled / ToggleWordWrap
+  Переключает Word Wrap скрипта и связанных дочерних вкладок. По умолчанию:
+  true; Alt+Z.
+
+ClearConsoleEnabled / ClearConsole
+  Очищает показанную историю активной консоли. По умолчанию: true; Ctrl+L.
+
+CopyConsoleSelectionEnabled / CopyConsoleSelection
+  Копирует выделенный текст консоли. По умолчанию: true; Ctrl+C.
+
+SelectAllConsoleEnabled / SelectAllConsole
+  Выделяет весь текст консоли. По умолчанию: true; Ctrl+A.
+
+SaveConsoleEnabled / SaveConsole
+  Сохраняет всё содержимое консоли в UTF-8. По умолчанию: true; Ctrl+S.
+
+IncreaseConsoleFontEnabled / IncreaseConsoleFont
+  Увеличивает шрифт активной вкладки на один пункт. По умолчанию: true;
+  Ctrl+Shift+Plus.
+
+DecreaseConsoleFontEnabled / DecreaseConsoleFont
+  Уменьшает шрифт активной вкладки на один пункт. По умолчанию: true; Ctrl+Minus.
+
+ResetConsoleFontEnabled / ResetConsoleFont
+  Возвращает настроенный шрифт консоли. По умолчанию: true; Ctrl+0.
 
 [Defaults]
 

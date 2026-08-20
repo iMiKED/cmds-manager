@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("Cmds Manager")]
@@ -8,6 +9,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCopyright("Copyright © 2026")]
 [assembly: ComVisible(false)]
 [assembly: Guid("52F47D16-6E53-46BA-89E1-7A420B217A9A")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0")]
+[assembly: AssemblyVersion("1.1.6.0")]
+[assembly: AssemblyFileVersion("1.1.6.0")]
+[assembly: AssemblyInformationalVersion("1.1.6")]
+[assembly: InternalsVisibleTo("CmdsManager.Tests")]

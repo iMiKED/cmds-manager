@@ -80,6 +80,7 @@ namespace CmdsManager.Presentation.Controls
 
         private readonly LocalizationService _text;
         private readonly Func<ApplicationSettings> _settings;
+        private readonly Func<HotkeySettings> _hotkeys;
         private readonly Func<Guid, bool> _wordWrapForScript;
         private readonly string _consoleLogDirectory;
         private readonly ConcurrentQueue<ConsoleEvent> _events = new ConcurrentQueue<ConsoleEvent>();
@@ -144,9 +145,17 @@ namespace CmdsManager.Presentation.Controls
 
         public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings,
             Func<Guid, bool> wordWrapForScript = null, string consoleLogDirectory = null)
+            : this(text, settings, () => settings()?.Hotkeys ?? new HotkeySettings(),
+                wordWrapForScript, consoleLogDirectory)
+        {
+        }
+
+        public ConsoleTabsControl(LocalizationService text, Func<ApplicationSettings> settings,
+            Func<HotkeySettings> hotkeys, Func<Guid, bool> wordWrapForScript, string consoleLogDirectory)
         {
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            _hotkeys = hotkeys ?? throw new ArgumentNullException(nameof(hotkeys));
             _wordWrapForScript = wordWrapForScript ?? (scriptId => false);
             _consoleLogDirectory = Path.GetFullPath(string.IsNullOrWhiteSpace(consoleLogDirectory)
                 ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "console")
@@ -282,6 +291,17 @@ namespace CmdsManager.Presentation.Controls
             }
 
             var settings = _settings() ?? new ApplicationSettings();
+            var hotkeys = _hotkeys() ?? new HotkeySettings();
+            _copyItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.CopyConsoleSelection);
+            _findItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.FindConsole);
+            _saveAllItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.SaveConsole);
+            _wordWrapItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.ToggleWordWrap);
+            _scrollLockItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.ToggleScrollLock);
+            _detachItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.ToggleConsoleDetach);
+            _fullScreenItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.ToggleConsoleFullScreen);
+            _maximizePaneItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.ToggleConsolePane);
+            _clearItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.ClearConsole);
+            _closeItem.ShortcutKeyDisplayString = ShortcutText(hotkeys, HotkeyAction.CloseConsoleTab);
             Font replacement;
             try
             {
@@ -357,6 +377,31 @@ namespace CmdsManager.Presentation.Controls
                 session.DetachedWindow.Activate();
             }
             else _tabStrip.SelectTab(session.ProcessId);
+        }
+
+        public bool SelectAdjacentTab(int offset)
+        {
+            if (_tabStrip.TabCount == 0) return false;
+            var current = _tabStrip.SelectedIndex < 0 ? 0 : _tabStrip.SelectedIndex;
+            var next = (current + offset) % _tabStrip.TabCount;
+            if (next < 0) next += _tabStrip.TabCount;
+            return _tabStrip.SelectIndex(next);
+        }
+
+        public bool CloseActiveTab()
+        {
+            var session = SelectedSession;
+            if (session == null) return false;
+            CloseSession(session);
+            return true;
+        }
+
+        public bool ToggleActiveTabDetached()
+        {
+            var session = SelectedSession;
+            if (session == null) return false;
+            ToggleDetached(session);
+            return true;
         }
 
         public bool DetachSelectedTab()
@@ -533,6 +578,7 @@ namespace CmdsManager.Presentation.Controls
                 BorderStyle = BorderStyle.None,
                 DetectUrls = true,
                 HideSelection = false,
+                ShortcutsEnabled = false,
                 ScrollBars = wordWrap ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both,
                 Font = _consoleFont ?? new Font(FontFamily.GenericMonospace, 10f),
                 ContextMenuStrip = _menu,
@@ -700,7 +746,11 @@ namespace CmdsManager.Presentation.Controls
 
         private void CopySelection()
         {
-            var session = MenuSession;
+            CopySelection(MenuSession);
+        }
+
+        private void CopySelection(ConsoleSession session)
+        {
             if (session == null || session.Output.SelectionLength == 0) return;
             try { session.Output.Copy(); }
             catch (ExternalException exception)
@@ -712,7 +762,11 @@ namespace CmdsManager.Presentation.Controls
 
         private void SaveConsoleText(bool selectionOnly)
         {
-            var session = MenuSession;
+            SaveConsoleText(MenuSession, selectionOnly);
+        }
+
+        private void SaveConsoleText(ConsoleSession session, bool selectionOnly)
+        {
             if (session == null) return;
             var content = selectionOnly ? session.Output.SelectedText : session.Output.Text;
             if (string.IsNullOrEmpty(content)) return;
@@ -768,6 +822,36 @@ namespace CmdsManager.Presentation.Controls
             }
         }
 
+        private static void ChangeFontSize(ConsoleSession session, float delta)
+        {
+            if (session == null) return;
+            var size = Math.Max(6f, Math.Min(48f, session.Output.Font.SizeInPoints + delta));
+            if (Math.Abs(size - session.Output.Font.SizeInPoints) < 0.01f) return;
+            Font replacement;
+            try
+            {
+                replacement = new Font(session.Output.Font.FontFamily, size,
+                    session.Output.Font.Style, GraphicsUnit.Point);
+            }
+            catch (ArgumentException)
+            {
+                return;
+            }
+            var previous = session.CustomFont;
+            session.CustomFont = replacement;
+            session.Output.Font = replacement;
+            previous?.Dispose();
+        }
+
+        private void ResetFont(ConsoleSession session)
+        {
+            if (session == null || _consoleFont == null) return;
+            var previous = session.CustomFont;
+            session.CustomFont = null;
+            session.Output.Font = _consoleFont;
+            previous?.Dispose();
+        }
+
         private void ChooseEncoding(object sender, EventArgs args)
         {
             var session = MenuSession;
@@ -779,7 +863,11 @@ namespace CmdsManager.Presentation.Controls
 
         private void ToggleWordWrap()
         {
-            var session = MenuSession;
+            ToggleWordWrap(MenuSession);
+        }
+
+        private void ToggleWordWrap(ConsoleSession session)
+        {
             if (session == null) return;
             var wordWrap = !session.WordWrap;
             foreach (var related in _sessions.Values.Where(item => item.ScriptId == session.ScriptId))
@@ -898,24 +986,8 @@ namespace CmdsManager.Presentation.Controls
         {
             var session = SessionFromControl(sender as Control);
             if (session == null) return;
-            if (args.Control && args.KeyCode == Keys.F)
+            if (TryHandleSessionHotkey(session, args.KeyData))
             {
-                ShowFind(session);
-                args.Handled = true;
-                args.SuppressKeyPress = true;
-                return;
-            }
-            if (args.KeyCode == Keys.Scroll)
-            {
-                ToggleScrollLock(session);
-                args.Handled = true;
-                args.SuppressKeyPress = true;
-                return;
-            }
-            if (args.KeyCode == Keys.F3 && session.FindWindow != null)
-            {
-                if (args.Shift) session.FindWindow.FindPrevious();
-                else session.FindWindow.FindNext();
                 args.Handled = true;
                 args.SuppressKeyPress = true;
             }
@@ -923,23 +995,105 @@ namespace CmdsManager.Presentation.Controls
 
         protected override bool ProcessCmdKey(ref Message message, Keys keyData)
         {
-            if (keyData == (Keys.Control | Keys.F) && SelectedSession != null)
-            {
-                ShowFind(SelectedSession);
-                return true;
-            }
-            if ((keyData & Keys.KeyCode) == Keys.Scroll && (keyData & Keys.Modifiers) == Keys.None &&
-                SelectedSession != null)
-            {
-                ToggleScrollLock(SelectedSession);
-                return true;
-            }
+            if (SelectedSession != null && TryHandleSessionHotkey(SelectedSession, keyData)) return true;
             return base.ProcessCmdKey(ref message, keyData);
+        }
+
+        private bool TryHandleSessionHotkey(ConsoleSession session, Keys keyData)
+        {
+            if (session == null) return false;
+            if (MatchesHotkey(HotkeyAction.FindConsole, keyData)) { ShowFind(session); return true; }
+            if (MatchesHotkey(HotkeyAction.FindNext, keyData))
+            {
+                if (session.FindWindow == null) ShowFind(session);
+                else session.FindWindow.FindNext();
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.FindPrevious, keyData))
+            {
+                if (session.FindWindow == null) ShowFind(session);
+                else session.FindWindow.FindPrevious();
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.ToggleScrollLock, keyData))
+            {
+                ToggleScrollLock(session);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.ToggleConsoleFullScreen, keyData))
+            {
+                ToggleFullScreen(session);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.ToggleWordWrap, keyData))
+            {
+                ToggleWordWrap(session);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.ClearConsole, keyData))
+            {
+                ClearSession(session);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.CopyConsoleSelection, keyData))
+            {
+                CopySelection(session);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.SelectAllConsole, keyData))
+            {
+                session.Output.SelectAll();
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.SaveConsole, keyData))
+            {
+                SaveConsoleText(session, false);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.IncreaseConsoleFont, keyData))
+            {
+                ChangeFontSize(session, 1f);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.DecreaseConsoleFont, keyData))
+            {
+                ChangeFontSize(session, -1f);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.ResetConsoleFont, keyData))
+            {
+                ResetFont(session);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.CloseConsoleTab, keyData))
+            {
+                CloseSession(session);
+                return true;
+            }
+            if (MatchesHotkey(HotkeyAction.ToggleConsoleDetach, keyData))
+            {
+                ToggleDetached(session);
+                return true;
+            }
+            return false;
+        }
+
+        private bool MatchesHotkey(HotkeyAction action, Keys keyData)
+        {
+            var settings = _hotkeys() ?? new HotkeySettings();
+            var binding = settings[action];
+            if (!binding.Enabled) return false;
+            ShowAppHotkeyGesture gesture;
+            return ShowAppHotkeyGesture.TryParse(binding.Gesture, false, out gesture) && gesture.Matches(keyData);
         }
 
         private void ClearSelectedTab()
         {
-            var session = MenuSession;
+            ClearSession(MenuSession);
+        }
+
+        private static void ClearSession(ConsoleSession session)
+        {
             if (session == null) return;
             session.History.Clear();
             session.HistoryUnits = 0;
@@ -954,7 +1108,11 @@ namespace CmdsManager.Presentation.Controls
 
         private void ToggleDetached()
         {
-            var session = MenuSession;
+            ToggleDetached(MenuSession);
+        }
+
+        private void ToggleDetached(ConsoleSession session)
+        {
             if (session == null) return;
             if (session.DetachedWindow == null) DetachSession(session, false);
             else AttachSession(session);
@@ -962,7 +1120,11 @@ namespace CmdsManager.Presentation.Controls
 
         private void ToggleFullScreen()
         {
-            var session = MenuSession;
+            ToggleFullScreen(MenuSession);
+        }
+
+        private void ToggleFullScreen(ConsoleSession session)
+        {
             if (session == null) return;
             if (session.DetachedWindow == null)
             {
@@ -988,7 +1150,8 @@ namespace CmdsManager.Presentation.Controls
             _contentHost.Controls.Remove(session.Output);
             _tabStrip.RemoveTab(session.ProcessId);
             session.Output.Visible = true;
-            var window = new DetachedConsoleForm(DetachedWindowTitle(session), session.Output)
+            var window = new DetachedConsoleForm(DetachedWindowTitle(session), session.Output,
+                keyData => TryHandleSessionHotkey(session, keyData))
             {
                 BackColor = _consoleBackground
             };
@@ -1089,6 +1252,12 @@ namespace CmdsManager.Presentation.Controls
         }
 
         private ConsoleSession MenuSession => _contextSession ?? SelectedSession;
+
+        private static string ShortcutText(HotkeySettings settings, HotkeyAction action)
+        {
+            var binding = settings[action];
+            return binding.Enabled ? binding.Gesture ?? string.Empty : string.Empty;
+        }
 
         private ConsoleSession SessionFromControl(Control control)
         {
